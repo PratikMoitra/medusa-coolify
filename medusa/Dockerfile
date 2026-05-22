@@ -1,58 +1,47 @@
-FROM node:23 as builder
+# Build stage
+FROM node:20-alpine AS builder
 
 WORKDIR /app/medusa
 
-COPY . . 
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
 
+# Copy all source
+COPY . .
+
+# Remove any existing node_modules
 RUN rm -rf node_modules
 
-RUN apt-get update && apt-get install -y python3 python3-pip python-is-python3
+# Install dependencies
+RUN yarn install --immutable 2>/dev/null || yarn install
 
-RUN yarn install --loglevel=error
+# Build the application
+RUN yarn build
 
-RUN yarn run build
-
-
-FROM node:23
-
-# Bug https://github.com/coollabsio/coolify/issues/1930
-ARG COOKIE_SECRET
-ARG JWT_SECRET
-ARG STORE_CORS
-ARG ADMIN_CORS
-ARG AUTH_CORS
-ARG DISABLE_ADMIN
-ARG WORKER_MODE
-ARG PORT
-ARG DATABASE_URL
-ARG REDIS_URL
-ARG BACKEND_URL
-
-RUN echo "${PORT}"
+# Production stage
+FROM node:20-alpine
 
 WORKDIR /app/medusa
 
-RUN mkdir .medusa
+# Install runtime dependencies
+RUN apk add --no-cache python3
 
-# COPY package*.json .yarnrc.yml yarn.lock ./ 
+# Create .medusa directory
+RUN mkdir -p .medusa
 
-# COPY medusa-config.ts .
-# COPY tsconfig.json .
-
-RUN apt-get update && apt-get install -y python3 python3-pip python-is-python3
-
+# Copy built application from builder
 COPY --from=builder /app/medusa/.medusa ./.medusa
 
+# Install production deps in the server directory
 WORKDIR /app/medusa/.medusa/server
+RUN yarn install --production 2>/dev/null || yarn install --production
 
-RUN yarn install --production
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD wget -q --spider http://localhost:9000/health || exit 1
 
+# Expose port
+EXPOSE 9000
 
-# RUN medusa migrations run 
-COPY migrations.sh /app/medusa/.medusa/server/migrations.sh
-RUN chmod +x /app/medusa/.medusa/server/migrations.sh
-RUN /app/medusa/.medusa/server/migrations.sh
-
-RUN rm /app/medusa/.medusa/server/migrations.sh
-
-CMD ["yarn", "run", "start"]
+# Start command - migrations run automatically on first start
+CMD ["yarn", "start"]
