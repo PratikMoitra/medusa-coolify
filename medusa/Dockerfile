@@ -36,9 +36,9 @@ COPY --from=builder /app/medusa/.medusa ./.medusa
 WORKDIR /app/medusa/.medusa/server
 RUN yarn install --production 2>/dev/null || yarn install --production
 
-# Health check
+# Health check - CRITICAL: use 127.0.0.1 not localhost (Alpine resolves localhost to ::1 IPv6 first)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-  CMD wget -q --spider http://localhost:9000/health || exit 1
+  CMD wget -q --spider http://127.0.0.1:9000/health || exit 1
 
 # Expose port
 EXPOSE 9000
