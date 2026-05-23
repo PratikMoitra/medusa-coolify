@@ -7,6 +7,13 @@ module.exports = defineConfig({
     databaseUrl: process.env.DATABASE_URL,
     redisUrl: process.env.REDIS_URL,
     workerMode: (process.env.MEDUSA_WORKER_MODE || "shared") as "shared" | "worker" | "server",
+    // Fix: Medusa hardcodes secure:true in production, but Coolify/Cloudflare
+    // terminates SSL at the proxy level. Override cookie options so the
+    // session cookie is set correctly behind the reverse proxy.
+    cookieOptions: {
+      secure: false,
+      sameSite: "lax" as any,
+    },
     http: {
       storeCors: process.env.STORE_CORS!,
       adminCors: process.env.ADMIN_CORS!,
