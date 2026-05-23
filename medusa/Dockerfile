@@ -44,6 +44,13 @@ COPY --from=builder --chown=medusa:medusa /app/package.json ./
 WORKDIR /app/.medusa/server
 RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
 
+# Verify build output exists
+RUN ls -la /app/.medusa/server/ && echo "--- Build output verified ---"
+
+# Switch back to project root for medusa start
+# (medusa start expects CWD to be project root, looks for .medusa/server/ relative to it)
+WORKDIR /app
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
   CMD wget -q --spider http://127.0.0.1:9000/health || exit 1
@@ -51,5 +58,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
 # Expose port
 EXPOSE 9000
 
-# Start command
-CMD ["node", "index.js"]
+# Start using the medusa CLI (installed in .medusa/server/node_modules)
+CMD [".medusa/server/node_modules/.bin/medusa", "start"]
