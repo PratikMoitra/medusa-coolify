@@ -34,7 +34,7 @@ services:
   # Medusa Server (API + Admin)
   medusa:
     build:
-      context: ./backend
+      context: ./medusa
       dockerfile: Dockerfile
     container_name: medusa_server
     restart: unless-stopped
@@ -70,7 +70,7 @@ services:
   # Optional: Dedicated Medusa Worker (for background jobs)
   # medusa-worker:
   #   build:
-  #     context: ./backend
+  #     context: ./medusa
   #     dockerfile: Dockerfile
   #   container_name: medusa_worker
   #   restart: unless-stopped
