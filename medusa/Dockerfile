@@ -44,12 +44,17 @@ COPY --from=builder --chown=medusa:medusa /app/package.json ./
 WORKDIR /app/.medusa/server
 RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
 
-# Verify build output exists
-RUN ls -la /app/.medusa/server/ && echo "--- Build output verified ---"
+# Debug: show build output and generated package.json
+RUN echo "=== Build output ===" && ls -la /app/.medusa/server/ && \
+    echo "=== package.json ===" && cat /app/.medusa/server/package.json && \
+    echo "=== src/ ===" && ls -la /app/.medusa/server/src/ && \
+    echo "--- Build output verified ---"
 
-# Switch back to project root for medusa start
-# (medusa start expects CWD to be project root, looks for .medusa/server/ relative to it)
-WORKDIR /app
+# Set production environment (critical: prevents CLI from trying to load ts-node)
+ENV NODE_ENV=production
+
+# Stay in .medusa/server — the CLI resolves @medusajs/medusa locally from here
+WORKDIR /app/.medusa/server
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
@@ -58,5 +63,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
 # Expose port
 EXPOSE 9000
 
-# Start using the medusa CLI (installed in .medusa/server/node_modules)
-CMD [".medusa/server/node_modules/.bin/medusa", "start"]
+# Start the Medusa server
+# Use npx from within .medusa/server where @medusajs/cli is installed
+CMD ["npx", "medusa", "start"]
+
