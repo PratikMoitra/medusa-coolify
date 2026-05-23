@@ -6,7 +6,7 @@ module.exports = defineConfig({
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
     redisUrl: process.env.REDIS_URL,
-    workerMode: (process.env.MEDUSA_WORKER_MODE || process.env.WORKER_MODE) as "shared" | "worker" | "server",
+    workerMode: (process.env.MEDUSA_WORKER_MODE || "shared") as "shared" | "worker" | "server",
     http: {
       storeCors: process.env.STORE_CORS!,
       adminCors: process.env.ADMIN_CORS!,
@@ -14,6 +14,10 @@ module.exports = defineConfig({
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
+    // Disable SSL for Docker internal postgres
+    databaseDriverOptions: process.env.DATABASE_SSL === "false" ? {
+      ssl: false,
+    } : undefined,
   },
 
   admin: {
@@ -22,18 +26,21 @@ module.exports = defineConfig({
   },
 
   modules: [
+    // Redis-backed cache
     {
       resolve: "@medusajs/medusa/cache-redis",
       options: {
         redisUrl: process.env.REDIS_URL,
       },
     },
+    // Redis-backed event bus
     {
       resolve: "@medusajs/medusa/event-bus-redis",
       options: {
         redisUrl: process.env.REDIS_URL,
       },
     },
+    // Redis-backed workflow engine
     {
       resolve: "@medusajs/medusa/workflow-engine-redis",
       options: {
@@ -42,6 +49,7 @@ module.exports = defineConfig({
         },
       },
     },
+    // Redis-backed locking
     {
       resolve: "@medusajs/medusa/locking",
       options: {
@@ -55,5 +63,25 @@ module.exports = defineConfig({
         ],
       },
     },
+    // File storage (S3/MinIO compatible)
+    ...(process.env.S3_FILE_URL ? [{
+      resolve: "@medusajs/medusa/file",
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/medusa/file-s3",
+            id: "s3",
+            options: {
+              file_url: process.env.S3_FILE_URL,
+              access_key_id: process.env.S3_ACCESS_KEY_ID,
+              secret_access_key: process.env.S3_SECRET_ACCESS_KEY,
+              region: process.env.S3_REGION,
+              bucket: process.env.S3_BUCKET,
+              endpoint: process.env.S3_ENDPOINT,
+            },
+          },
+        ],
+      },
+    }] : []),
   ],
 });

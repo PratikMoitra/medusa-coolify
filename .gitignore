@@ -1,2 +1,6 @@
-.docker-data
+node_modules
 .env
+.env.*
+!.env.template
+*.log
+.DS_Store

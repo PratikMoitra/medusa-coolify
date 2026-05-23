@@ -1,0 +1,21 @@
+{
+  "name": "medusa-onezipp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Onezipp Medusa v2 ecommerce backend",
+  "scripts": {
+    "build": "cd backend && pnpm build",
+    "start": "cd backend && pnpm start",
+    "dev": "cd backend && pnpm dev",
+    "db:migrate": "cd backend && npx medusa db:migrate",
+    "seed": "cd backend && npx medusa exec ./src/migration-scripts/initial-data-seed.ts",
+    "user:create": "cd backend && npx medusa user -e",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:migrate": "docker compose exec medusa npx medusa db:migrate"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
