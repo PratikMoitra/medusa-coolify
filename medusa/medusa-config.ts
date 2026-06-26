@@ -70,8 +70,9 @@ module.exports = defineConfig({
         ],
       },
     },
-    // File storage (S3/MinIO compatible)
+    // File storage (S3/MinIO compatible — R2 needs forcePathStyle)
     ...(process.env.S3_FILE_URL ? [{
+      key: "file",
       resolve: "@medusajs/medusa/file",
       options: {
         providers: [
@@ -85,6 +86,9 @@ module.exports = defineConfig({
               region: process.env.S3_REGION,
               bucket: process.env.S3_BUCKET,
               endpoint: process.env.S3_ENDPOINT,
+              additional_client_config: {
+                forcePathStyle: true,
+              },
             },
           },
         ],
