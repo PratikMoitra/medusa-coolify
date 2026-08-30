@@ -70,6 +70,19 @@ module.exports = defineConfig({
         ],
       },
     },
+    // Razorpay payment provider
+    {
+      resolve: "medusa-payment-razorpay",
+      options: {
+        key_id: process.env.RAZORPAY_ID,
+        key_secret: process.env.RAZORPAY_SECRET,
+        razorpay_account: process.env.RAZORPAY_ACCOUNT,
+        automatic_expiry_period: 30,          // days before order auto-expires
+        manual_expiry_period: 20,
+        refund_speed: "normal",               // "normal" or "optimum"
+        webhook_secret: process.env.RAZORPAY_WEBHOOK_SECRET,
+      },
+    },
     // File storage (S3/MinIO compatible — R2 needs forcePathStyle)
     ...(process.env.S3_FILE_URL ? [{
       key: "file",

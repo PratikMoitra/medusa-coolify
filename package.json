@@ -17,5 +17,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "medusa-payment-razorpay": "^7.3.2"
   }
 }
