@@ -22,10 +22,9 @@ module.exports = defineConfig({
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
     // Disable SSL for Docker internal postgres (Coolify internal network)
+    // ssl:false at the top level is the correct Medusa v2 databaseDriverOptions format
     databaseDriverOptions: process.env.DATABASE_SSL === "false" ? {
-      connection: {
-        ssl: false,
-      },
+      ssl: false,
     } : undefined,
   },
 
