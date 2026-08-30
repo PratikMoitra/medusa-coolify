@@ -70,17 +70,25 @@ module.exports = defineConfig({
         ],
       },
     },
-    // Razorpay payment provider
+    // Razorpay payment provider (Medusa v2 compatible)
     {
-      resolve: "medusa-payment-razorpay",
+      resolve: "@medusajs/medusa/payment",
       options: {
-        key_id: process.env.RAZORPAY_ID,
-        key_secret: process.env.RAZORPAY_SECRET,
-        razorpay_account: process.env.RAZORPAY_ACCOUNT,
-        automatic_expiry_period: 30,          // days before order auto-expires
-        manual_expiry_period: 20,
-        refund_speed: "normal",               // "normal" or "optimum"
-        webhook_secret: process.env.RAZORPAY_WEBHOOK_SECRET,
+        providers: [
+          {
+            resolve: "@alchemilla/medusa-razorpay/providers/payment-razorpay/src",
+            id: "razorpay",
+            options: {
+              key_id: process.env.RAZORPAY_ID || "",
+              key_secret: process.env.RAZORPAY_SECRET || "",
+              razorpay_account: process.env.RAZORPAY_ACCOUNT || "",
+              webhook_secret: process.env.RAZORPAY_WEBHOOK_SECRET || "",
+              manual_expiry_period: 20,
+              refund_speed: "normal",
+              auto_capture: false,
+            },
+          },
+        ],
       },
     },
     // File storage: Cloudflare R2 (S3-compatible)

@@ -19,6 +19,6 @@
     "node": ">=20"
   },
   "dependencies": {
-    "medusa-payment-razorpay": "^7.3.2"
+    "@alchemilla/medusa-razorpay": "^0.1.0"
   }
 }
