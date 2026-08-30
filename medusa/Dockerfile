@@ -44,6 +44,10 @@ USER medusa
 COPY --from=builder --chown=medusa:medusa /app/.medusa ./.medusa
 COPY --from=builder --chown=medusa:medusa /app/package.json ./
 
+# Copy startup diagnostic script
+COPY --chown=medusa:medusa start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 # Install production deps in the server directory
 WORKDIR /app/.medusa/server
 RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
@@ -69,7 +73,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
 # Expose port
 EXPOSE 9000
 
-# Start the Medusa server
-# Use npx from within .medusa/server where @medusajs/cli is installed
-CMD ["npx", "medusa", "start"]
+# Start the Medusa server via diagnostic wrapper script
+CMD ["/app/start.sh"]
 
