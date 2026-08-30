@@ -27,7 +27,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Install runtime dependencies
-RUN apk add --no-cache python3 wget
+RUN apk add --no-cache python3 wget curl
 
 # Install pnpm for production
 RUN npm install -g pnpm@10.11.1
