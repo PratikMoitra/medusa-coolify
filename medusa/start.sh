@@ -60,11 +60,23 @@ NODETEST
 echo ""
 echo "========================================"
 
-# Run migrations only in server/shared mode (not worker)
+# Server/shared mode: run migrations and seed admin user
 if [ "${MEDUSA_WORKER_MODE}" != "worker" ]; then
   echo "=== Running DB Migrations (server mode) ==="
   npx medusa db:migrate
   echo "=== Migrations complete ==="
+
+  # Create admin user if credentials are provided via env vars
+  if [ -n "${MEDUSA_ADMIN_EMAIL}" ] && [ -n "${MEDUSA_ADMIN_PASSWORD}" ]; then
+    echo "=== Creating/verifying admin user: ${MEDUSA_ADMIN_EMAIL} ==="
+    npx medusa user \
+      -e "${MEDUSA_ADMIN_EMAIL}" \
+      -p "${MEDUSA_ADMIN_PASSWORD}" \
+      && echo "=== Admin user created ===" \
+      || echo "=== Admin user already exists, skipping ==="
+  else
+    echo "=== Skipping admin user: MEDUSA_ADMIN_EMAIL / MEDUSA_ADMIN_PASSWORD not set ==="
+  fi
 fi
 
 echo "=== Starting: npx medusa start (mode: ${MEDUSA_WORKER_MODE:-shared}) ==="
