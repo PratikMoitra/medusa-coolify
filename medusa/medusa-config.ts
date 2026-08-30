@@ -21,9 +21,11 @@ module.exports = defineConfig({
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     },
-    // Disable SSL for Docker internal postgres
+    // Disable SSL for Docker internal postgres (Coolify internal network)
     databaseDriverOptions: process.env.DATABASE_SSL === "false" ? {
-      ssl: false,
+      connection: {
+        ssl: false,
+      },
     } : undefined,
   },
 
