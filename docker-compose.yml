@@ -32,7 +32,7 @@ services:
       retries: 5
 
   # Medusa Server (API + Admin)
-  medusa:
+  medusa-server:
     build:
       context: ./medusa
       dockerfile: Dockerfile
@@ -55,38 +55,62 @@ services:
       - STORE_CORS=${STORE_CORS:-http://localhost:8000,http://localhost:3000}
       - ADMIN_CORS=${ADMIN_CORS:-http://localhost:9000}
       - AUTH_CORS=${AUTH_CORS:-http://localhost:9000,http://localhost:8000}
-      - MEDUSA_WORKER_MODE=shared
+      - MEDUSA_WORKER_MODE=server
       - BACKEND_URL=${BACKEND_URL:-http://localhost:9000}
-      # Optional S3/MinIO file storage
-      - S3_FILE_URL=${S3_FILE_URL:-}
-      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-}
-      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
-      - S3_REGION=${S3_REGION:-}
-      - S3_BUCKET=${S3_BUCKET:-}
-      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - DISABLE_ADMIN=false
+      # Razorpay
+      - RAZORPAY_ID=${RAZORPAY_ID:-}
+      - RAZORPAY_SECRET=${RAZORPAY_SECRET:-}
+      - RAZORPAY_ACCOUNT=${RAZORPAY_ACCOUNT:-}
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET:-}
+      # Cloudflare R2 file storage
+      - R2_ENDPOINT=${R2_ENDPOINT:-}
+      - R2_PUBLIC_URL=${R2_PUBLIC_URL:-}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
+      - R2_BUCKET=${R2_BUCKET:-medusa-media}
     networks:
       - medusa_network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
 
-  # Optional: Dedicated Medusa Worker (for background jobs)
-  # medusa-worker:
-  #   build:
-  #     context: ./medusa
-  #     dockerfile: Dockerfile
-  #   container_name: medusa_worker
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - medusa
-  #   environment:
-  #     - NODE_ENV=production
-  #     - DATABASE_URL=postgres://${POSTGRES_USER:-medusa}:${POSTGRES_PASSWORD:-medusa}@postgres:5432/${POSTGRES_DB:-medusa}
-  #     - DATABASE_SSL=false
-  #     - REDIS_URL=redis://redis:6379
-  #     - JWT_SECRET=${JWT_SECRET}
-  #     - COOKIE_SECRET=${COOKIE_SECRET}
-  #     - MEDUSA_WORKER_MODE=worker
-  #     - DISABLE_ADMIN=true
-  #   networks:
-  #     - medusa_network
+  # Medusa Worker (background jobs)
+  medusa-worker:
+    build:
+      context: ./medusa
+      dockerfile: Dockerfile
+    container_name: medusa_worker
+    restart: unless-stopped
+    depends_on:
+      medusa-server:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://${POSTGRES_USER:-medusa}:${POSTGRES_PASSWORD:-medusa}@postgres:5432/${POSTGRES_DB:-medusa}
+      - DATABASE_SSL=false
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - COOKIE_SECRET=${COOKIE_SECRET}
+      - MEDUSA_WORKER_MODE=worker
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:9000}
+      - DISABLE_ADMIN=true
+      # Razorpay
+      - RAZORPAY_ID=${RAZORPAY_ID:-}
+      - RAZORPAY_SECRET=${RAZORPAY_SECRET:-}
+      - RAZORPAY_ACCOUNT=${RAZORPAY_ACCOUNT:-}
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET:-}
+      # Cloudflare R2 file storage
+      - R2_ENDPOINT=${R2_ENDPOINT:-}
+      - R2_PUBLIC_URL=${R2_PUBLIC_URL:-}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
+      - R2_BUCKET=${R2_BUCKET:-medusa-media}
+    networks:
+      - medusa_network
 
 volumes:
   postgres_data:
