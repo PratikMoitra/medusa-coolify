@@ -33,7 +33,8 @@
     "react-router-dom": "6.30.3",
     "react-i18next": "13.5.0",
     "@medusajs/ui": "4.1.13",
-    "zod": "4.2.0"
+    "zod": "4.2.0",
+    "medusa-payment-razorpay": "^7.3.2"
   },
   "devDependencies": {
     "@medusajs/test-utils": "2.15.3",
