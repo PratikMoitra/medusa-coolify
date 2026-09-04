@@ -18,6 +18,7 @@
  *   npx tsx woo-to-medusa.ts --dry-run      # preview only
  *   npx tsx woo-to-medusa.ts --force        # re-migrate existing products
  *   npx tsx woo-to-medusa.ts --skip-images  # skip R2 upload
+ *   npx tsx woo-to-medusa.ts --fix-prices   # fix 100x inflated prices on existing products
  *   npx tsx woo-to-medusa.ts --verbose      # verbose logging
  */
 
@@ -33,11 +34,14 @@ const WooCommerceRestApi =
 
 // ── CLI FLAGS ────────────────────────────────────────────────────
 
-const DRY_RUN          = process.argv.includes("--dry-run")
-const FORCE            = process.argv.includes("--force")
-const SKIP_IMAGES      = process.argv.includes("--skip-images")
-const VERBOSE          = process.argv.includes("--verbose")
-const PATCH_CATEGORIES = process.argv.includes("--patch-categories")
+const DRY_RUN               = process.argv.includes("--dry-run")
+const FORCE                 = process.argv.includes("--force")
+const SKIP_IMAGES           = process.argv.includes("--skip-images")
+const VERBOSE               = process.argv.includes("--verbose")
+const PATCH_CATEGORIES      = process.argv.includes("--patch-categories")
+const FIX_PRICES            = process.argv.includes("--fix-prices")
+const FIX_SHIPPING_PROFILE  = process.argv.includes("--fix-shipping-profile")
+const SYNC_PRICES_FROM_WOO  = process.argv.includes("--sync-prices-from-woo")
 
 // ── TYPES ────────────────────────────────────────────────────────
 
@@ -98,6 +102,8 @@ interface WooVariation {
 let authToken = ""
 let MEDUSA_URL = ""
 let WOO_CLIENT: any = null
+let DEFAULT_INVENTORY_QTY = 500
+let STOCK_LOCATION_ID: string | null = null
 
 // ── PROMPT HELPERS ────────────────────────────────────────────────
 
@@ -185,8 +191,10 @@ function stripHtml(html: string): string {
     .replace(/\s+/g, " ").trim()
 }
 
-function priceToPaisa(price: string): number {
-  return Math.round(parseFloat(price || "0") * 100)
+// Medusa v2 stores prices in major currency units (e.g. ₹525, not paisa).
+// Simply parse the WooCommerce price string as a number.
+function parsePrice(price: string): number {
+  return parseFloat(price || "0")
 }
 
 // ── MEDUSA API CLIENT ─────────────────────────────────────────────
@@ -600,6 +608,187 @@ async function ensureIndiaRegion(): Promise<void> {
   }
 }
 
+// ── STOCK LOCATION + INVENTORY ────────────────────────────────────
+
+/**
+ * Ensure at least one stock location exists and cache its ID.
+ * If none exist, create a "Default Warehouse" location.
+ */
+async function ensureStockLocation(): Promise<void> {
+  if (DRY_RUN) return
+  console.log("\n[INVENTORY] Checking stock locations...")
+  try {
+    const res = await medusaAdmin("GET", "/stock-locations?limit=100")
+    const locations: any[] = res.stock_locations || []
+
+    if (locations.length > 0) {
+      // Use the first location
+      STOCK_LOCATION_ID = locations[0].id
+      console.log(`  [OK] Using stock location: "${locations[0].name}" (${STOCK_LOCATION_ID})`)
+    } else {
+      console.log("  No stock locations found — creating default...")
+      const result = await medusaAdmin("POST", "/stock-locations", {
+        name: "Default Warehouse",
+      })
+      STOCK_LOCATION_ID = result.stock_location?.id
+      console.log(`  [OK] Created: "Default Warehouse" (${STOCK_LOCATION_ID})`)
+    }
+  } catch (e: any) {
+    console.warn(`  [WARN] Stock location setup failed: ${e.message.slice(0, 120)}`)
+    console.warn(`         Inventory levels will not be set.`)
+  }
+}
+
+// ── SHIPPING PROFILE ──────────────────────────────────────────────
+
+/**
+ * Resolve which shipping profile to use for product assignment.
+ *
+ * Resolution logic:
+ *   1. Fetch all shipping profiles from Medusa.
+ *   2. If exactly one exists → use it automatically.
+ *   3. If multiple exist → prompt the user to choose (like sales channels).
+ *   4. If none exist and not dry-run → create "Default Shipping Profile".
+ *   5. In dry-run mode → never write; return a sentinel string so the
+ *      caller can still show the "would patch N products" preview.
+ */
+async function ensureDefaultShippingProfile(): Promise<string | null> {
+  console.log("\n[SHIPPING] Fetching shipping profiles...")
+  try {
+    const res = await medusaAdmin("GET", "/shipping-profiles?limit=100")
+    const profiles: any[] = res.shipping_profiles || []
+
+    // ── No profiles exist ────────────────────────────────────────────
+    if (profiles.length === 0) {
+      if (DRY_RUN) {
+        console.log(
+          "  [DRY RUN] No shipping profiles found — " +
+            "would create \"Default Shipping Profile\" on a real run."
+        )
+        // Return a sentinel so fixShippingProfiles() can still show the preview
+        return "__dry_run_placeholder__"
+      }
+      console.log("  No shipping profiles found — creating default...")
+      const result = await medusaAdmin("POST", "/shipping-profiles", {
+        name: "Default Shipping Profile",
+        type: "default",
+      })
+      const id = result.shipping_profile?.id
+      console.log(`  [OK] Created: "Default Shipping Profile" (${id})`)
+      return id
+    }
+
+    // ── Exactly one profile — use it automatically ────────────────────
+    if (profiles.length === 1) {
+      const p = profiles[0]
+      console.log(`  [OK] Using shipping profile: "${p.name}" (${p.id})`)
+      return p.id
+    }
+
+    // ── Multiple profiles — prompt the user to choose ─────────────────
+    const options = profiles.map((p: any) => ({
+      label: `${p.name} (${p.id})${p.type === "default" ? "  [default]" : ""}`,
+      value: p.id,
+    }))
+    const chosen = await promptSelect(
+      "Multiple shipping profiles found — select one to assign to all products:",
+      options
+    )
+    const selected = profiles.find((p: any) => p.id === chosen)!
+    console.log(`  [OK] Using: "${selected.name}" (${chosen})`)
+    return chosen
+  } catch (e: any) {
+    console.warn(`  [WARN] Shipping profile fetch failed: ${e.message.slice(0, 120)}`)
+    console.warn(`         Products will be created without a shipping profile.`)
+    return null
+  }
+}
+
+/**
+ * For a freshly created product, look up each variant's inventory item
+ * and set the stocked_quantity at the configured stock location.
+ */
+async function setProductInventory(
+  productId: string,
+  productName: string,
+  wooProduct: WooProduct,
+  wooVariations: WooVariation[]
+): Promise<void> {
+  if (!STOCK_LOCATION_ID) return
+
+  try {
+    // Fetch the product with its variants to get inventory_item_id per variant
+    const productRes = await medusaAdmin(
+      "GET",
+      `/products/${productId}?fields=*variants`
+    )
+    const variants: any[] = productRes.product?.variants || []
+
+    for (const variant of variants) {
+      // Determine the right quantity from WooCommerce data
+      let qty = DEFAULT_INVENTORY_QTY
+
+      if (wooVariations.length > 0) {
+        // Match by SKU for variable products
+        const wooVar = wooVariations.find((wv) => wv.sku === variant.sku)
+        if (wooVar?.manage_stock && wooVar.stock_quantity != null) {
+          qty = wooVar.stock_quantity
+        }
+      } else {
+        // Simple product
+        if (wooProduct.manage_stock && wooProduct.stock_quantity != null) {
+          qty = wooProduct.stock_quantity
+        }
+      }
+
+      // Get inventory items linked to this variant
+      const invRes = await medusaAdmin(
+        "GET",
+        `/inventory-items?sku=${encodeURIComponent(variant.sku || "")}`
+      )
+      const invItems: any[] = invRes.inventory_items || []
+
+      if (invItems.length === 0) {
+        if (VERBOSE) console.log(`     [INV] No inventory item found for SKU "${variant.sku}"`)
+        continue
+      }
+
+      const invItemId = invItems[0].id
+
+      // Create inventory level at the stock location
+      try {
+        await medusaAdmin(
+          "POST",
+          `/inventory-items/${invItemId}/location-levels`,
+          {
+            location_id: STOCK_LOCATION_ID,
+            stocked_quantity: qty,
+          }
+        )
+        if (VERBOSE) console.log(`     [INV] ${variant.sku}: ${qty} units at ${STOCK_LOCATION_ID}`)
+      } catch (levelErr: any) {
+        // If level already exists, try to update it
+        if (levelErr.message?.includes("409") || levelErr.message?.includes("already")) {
+          try {
+            await medusaAdmin(
+              "POST",
+              `/inventory-items/${invItemId}/location-levels/${STOCK_LOCATION_ID}`,
+              { stocked_quantity: qty }
+            )
+            if (VERBOSE) console.log(`     [INV] ${variant.sku}: updated to ${qty} units`)
+          } catch {
+            if (VERBOSE) console.warn(`     [INV WARN] Could not update level for ${variant.sku}`)
+          }
+        } else {
+          if (VERBOSE) console.warn(`     [INV WARN] ${variant.sku}: ${getErrorString(levelErr).slice(0, 100)}`)
+        }
+      }
+    }
+  } catch (e: any) {
+    console.warn(`     [INV WARN] "${productName}": ${getErrorString(e).slice(0, 120)}`)
+  }
+}
+
 // ── CATEGORY SYNC ─────────────────────────────────────────────────
 
 async function syncCategories(): Promise<Map<number, string>> {
@@ -789,7 +978,8 @@ async function ensureTags(names: Set<string>, tagMap: Map<string, string>): Prom
 
 async function syncProducts(
   categoryMap: Map<number, string>,
-  salesChannelId: string | null
+  salesChannelId: string | null,
+  shippingProfileId: string | null
 ): Promise<void> {
   console.log("\n==========================================")
   console.log("  PHASE 2: PRODUCTS")
@@ -897,14 +1087,14 @@ async function syncProducts(
         const price = v.price || v.regular_price || product.price || "0"
         const comparePrice =
           v.regular_price && v.sale_price && v.sale_price !== v.regular_price
-            ? priceToPaisa(v.regular_price)
+            ? parsePrice(v.regular_price)
             : undefined
 
         variants.push({
           title,
           sku: v.sku || `${product.sku || product.slug}-${title.replace(/\s+/g, "-").toLowerCase()}`,
           options: variantOptions,
-          prices: [{ amount: priceToPaisa(price), currency_code: "inr" }],
+          prices: [{ amount: parsePrice(price), currency_code: "inr" }],
           // Note: inventory_quantity and compare_at_price are NOT accepted by
           // Medusa v2 POST /admin/products. Inventory is managed separately
           // via the Inventory Module after product creation.
@@ -921,14 +1111,14 @@ async function syncProducts(
       const price = product.price || product.regular_price || "0"
       const comparePrice =
         product.regular_price && product.sale_price && product.sale_price !== product.regular_price
-          ? priceToPaisa(product.regular_price)
+          ? parsePrice(product.regular_price)
           : undefined
 
       variants.push({
         title: "One Size",
         sku: product.sku || product.slug,
         options: { Size: "One Size" },
-        prices: [{ amount: priceToPaisa(price), currency_code: "inr" }],
+        prices: [{ amount: parsePrice(price), currency_code: "inr" }],
         // Note: inventory_quantity and compare_at_price are NOT accepted by
         // Medusa v2 POST /admin/products.
         manage_inventory: true,
@@ -950,16 +1140,23 @@ async function syncProducts(
 
     // Assemble payload
     const payload: any = {
-      title:       product.name,
-      handle:      product.slug,
-      subtitle:    stripHtml(product.short_description).slice(0, 255) || undefined,
-      description: stripHtml(product.description) || undefined,
-      status:      "published",
-      thumbnail:   images[0]?.url || undefined,
+      title:               product.name,
+      handle:              product.slug,
+      subtitle:            stripHtml(product.short_description).slice(0, 255) || undefined,
+      description:         stripHtml(product.description) || undefined,
+      status:              "published",
+      thumbnail:           images[0]?.url || undefined,
       images,
       options,
       variants,
-      weight: product.weight            ? parseFloat(product.weight) * 1000            : undefined,
+      // shipping_profile_id ensures this product is checkout-ready from the
+      // moment it is created, without relying solely on the server subscriber.
+      // Exclude the dry-run sentinel so it never reaches the real API.
+      shipping_profile_id:
+        shippingProfileId && shippingProfileId !== "__dry_run_placeholder__"
+          ? shippingProfileId
+          : undefined,
+      weight: product.weight             ? parseFloat(product.weight) * 1000            : undefined,
       length: product.dimensions?.length ? parseFloat(product.dimensions.length) : undefined,
       width:  product.dimensions?.width  ? parseFloat(product.dimensions.width)  : undefined,
       height: product.dimensions?.height ? parseFloat(product.dimensions.height) : undefined,
@@ -974,11 +1171,29 @@ async function syncProducts(
       continue
     }
 
+    // When --force, delete existing product with this handle before re-creating
+    if (FORCE && existingHandles.has(product.slug)) {
+      try {
+        const existing = await medusaAdmin("GET", `/products?handle=${product.slug}&fields=id`)
+        const existingId = existing.products?.[0]?.id
+        if (existingId) {
+          await medusaAdmin("DELETE", `/products/${existingId}`)
+          console.log(`     [FORCE] Deleted existing product ${existingId}`)
+        }
+      } catch (e: any) {
+        console.warn(`     [WARN] Could not delete existing product: ${e.message.slice(0, 150)}`)
+      }
+    }
+
     try {
       const result = await medusaAdmin("POST", "/products", payload)
       const id = result.product?.id
       console.log(`     [OK] Created -> ${id} (${variants.length} variants, ${images.length} images)`)
-      if (id) createdProductIds.push(id)
+      if (id) {
+        createdProductIds.push(id)
+        // Set inventory levels for all variants
+        await setProductInventory(id, product.name, product, variations)
+      }
       created++
     } catch (e: any) {
       console.error(`     [FAIL] ${e.message.slice(0, 250)}`)
@@ -1049,30 +1264,370 @@ async function interactiveSetup() {
     console.log(`  WOOCOMMERCE_URL              = ${e.WOOCOMMERCE_URL}`)
     console.log(`  WOOCOMMERCE_CONSUMER_KEY     = ${e.WOOCOMMERCE_CONSUMER_KEY!.slice(0, 8)}…`)
     console.log(`  WOOCOMMERCE_CONSUMER_SECRET  = ${e.WOOCOMMERCE_CONSUMER_SECRET!.slice(0, 8)}…`)
-
-    return {
-      medusaUrl:      e.MEDUSA_BACKEND_URL!,
-      email:          e.MEDUSA_ADMIN_EMAIL!,
-      password:       e.MEDUSA_ADMIN_PASSWORD!,
-      wooUrl:         e.WOOCOMMERCE_URL!,
-      consumerKey:    e.WOOCOMMERCE_CONSUMER_KEY!,
-      consumerSecret: e.WOOCOMMERCE_CONSUMER_SECRET!,
-    }
+  } else {
+    console.log("  (Missing values will be prompted; others loaded from .env)\n")
   }
 
-  console.log("  (Missing values will be prompted; others loaded from .env)\n")
+  const medusaUrl      = allPresent ? e.MEDUSA_BACKEND_URL!      : await resolve("MEDUSA_BACKEND_URL",          "Medusa backend URL (e.g. https://api.yourdomain.com)")
+  const email          = allPresent ? e.MEDUSA_ADMIN_EMAIL!      : await resolve("MEDUSA_ADMIN_EMAIL",           "Medusa admin email")
+  const password       = allPresent ? e.MEDUSA_ADMIN_PASSWORD!   : await resolve("MEDUSA_ADMIN_PASSWORD",        "Medusa admin password", true)
+  const wooUrl         = allPresent ? e.WOOCOMMERCE_URL!         : await resolve("WOOCOMMERCE_URL",              "WooCommerce site URL (e.g. https://yourstore.com)")
+  const consumerKey    = allPresent ? e.WOOCOMMERCE_CONSUMER_KEY!    : await resolve("WOOCOMMERCE_CONSUMER_KEY",     "WooCommerce consumer key (ck_...)")
+  const consumerSecret = allPresent ? e.WOOCOMMERCE_CONSUMER_SECRET! : await resolve("WOOCOMMERCE_CONSUMER_SECRET",  "WooCommerce consumer secret (cs_...)")
 
-  const medusaUrl      = await resolve("MEDUSA_BACKEND_URL",          "Medusa backend URL (e.g. https://api.yourdomain.com)")
-  const email          = await resolve("MEDUSA_ADMIN_EMAIL",           "Medusa admin email")
-  const password       = await resolve("MEDUSA_ADMIN_PASSWORD",        "Medusa admin password", true)
-  const wooUrl         = await resolve("WOOCOMMERCE_URL",              "WooCommerce site URL (e.g. https://yourstore.com)")
-  const consumerKey    = await resolve("WOOCOMMERCE_CONSUMER_KEY",     "WooCommerce consumer key (ck_...)")
-  const consumerSecret = await resolve("WOOCOMMERCE_CONSUMER_SECRET",  "WooCommerce consumer secret (cs_...)")
+  // ── Inventory defaults ──
+  const envInvQty = (e.DEFAULT_INVENTORY_QTY ?? "").trim()
+  if (envInvQty && !isNaN(parseInt(envInvQty))) {
+    DEFAULT_INVENTORY_QTY = parseInt(envInvQty)
+    console.log(`  DEFAULT_INVENTORY_QTY        = ${DEFAULT_INVENTORY_QTY}  ← from .env`)
+  } else {
+    const invInput = await prompt(
+      `  Default inventory quantity per variant (if WooCommerce stock not available) [500]: `
+    )
+    DEFAULT_INVENTORY_QTY = invInput && !isNaN(parseInt(invInput)) ? parseInt(invInput) : 500
+    console.log(`  Using default inventory: ${DEFAULT_INVENTORY_QTY} items per variant`)
+  }
 
   return { medusaUrl, email, password, wooUrl, consumerKey, consumerSecret }
 }
 
-// ── MAIN ──────────────────────────────────────────────────────────
+// ── SYNC PRICES FROM WOOCOMMERCE (standalone) ───────────────────────────
+//
+//  Re-syncs every Medusa product variant's price to exactly match
+//  WooCommerce. This is the authoritative fix when prices in Medusa
+//  have been divided or multiplied by mistake.
+//
+//  Strategy:
+//   1. Fetch all published WooCommerce products (handle → price map).
+//   2. For variable products, fetch each variation's price too.
+//   3. Fetch all Medusa products, match by handle.
+//   4. For each variant, match by SKU to the WooCommerce price.
+//   5. PATCH via POST /admin/products/:id/variants/:variantId.
+//
+//  Safe to re-run: idempotent (sets price to what WooCommerce says).
+// ─────────────────────────────────────────────────────────────────
+
+async function syncPricesFromWoo(): Promise<void> {
+  console.log("\n[SYNC-PRICES] Re-syncing product prices from WooCommerce...")
+
+  // ── Step 1: Fetch all WooCommerce products ──────────────────────
+  console.log("  Fetching WooCommerce products...")
+  const wooProducts: any[] = []
+  let page = 1
+  while (true) {
+    const { data } = await withRetry(`WooCommerce products page ${page}`, () =>
+      WOO_CLIENT.get("products", { status: "publish", per_page: 100, page })
+    ) as any
+    if (data.length === 0) break
+    wooProducts.push(...data)
+    page++
+  }
+  console.log(`  ${wooProducts.length} WooCommerce products fetched`)
+
+  // Build a map: wooHandle → { defaultPrice, variationsBySku }
+  // For variable products we'll lazy-fetch variations below.
+  interface WooPriceInfo {
+    defaultPrice: number
+    variationsBySku: Map<string, number>
+  }
+  const wooPriceMap = new Map<string, WooPriceInfo>()
+
+  for (const wp of wooProducts) {
+    const defaultPrice = parsePrice(wp.price || wp.regular_price || "0")
+    const variationsBySku = new Map<string, number>()
+
+    if (wp.variations.length > 0) {
+      try {
+        const { data: vars } = await withRetry(`WooCommerce variations for ${wp.slug}`, () =>
+          WOO_CLIENT.get(`products/${wp.id}/variations`, { per_page: 100 })
+        ) as any
+        for (const v of vars as any[]) {
+          const sku = v.sku || `${wp.sku || wp.slug}-${v.attributes.map((a: any) => a.option).join("-").toLowerCase()}`
+          const price = parsePrice(v.price || v.regular_price || wp.price || "0")
+          variationsBySku.set(sku, price)
+        }
+      } catch (e: any) {
+        if (VERBOSE) console.warn(`    [WARN] Could not fetch variations for "${wp.slug}": ${e.message.slice(0, 80)}`)
+      }
+    }
+
+    wooPriceMap.set(wp.slug, { defaultPrice, variationsBySku })
+  }
+
+  // ── Step 2: Fetch all Medusa products (paginated) ───────────────
+  console.log("  Fetching Medusa products...")
+  const medusaProducts: any[] = []
+  let offset = 0
+  while (true) {
+    const res = await medusaAdmin(
+      "GET",
+      `/products?limit=100&offset=${offset}&fields=id,handle,title,*variants,*variants.prices`
+    )
+    const batch: any[] = res.products || []
+    if (batch.length === 0) break
+    medusaProducts.push(...batch)
+    if (batch.length < 100) break
+    offset += 100
+  }
+  console.log(`  ${medusaProducts.length} Medusa products fetched`)
+
+  // ── Step 3: Match and update prices ────────────────────────────
+  let updatedVariants = 0, skippedVariants = 0, failedVariants = 0, skippedProducts = 0
+
+  for (const mp of medusaProducts) {
+    const wooInfo = wooPriceMap.get(mp.handle)
+    if (!wooInfo) {
+      if (VERBOSE) console.log(`  [SKIP] "${mp.handle}" — not found in WooCommerce`)
+      skippedProducts++
+      continue
+    }
+
+    const variants: any[] = mp.variants || []
+    for (const variant of variants) {
+      const sku: string = variant.sku || ""
+
+      // Resolve the correct price for this variant:
+      // prefer variation-level SKU match, fall back to product default
+      const correctPrice =
+        wooInfo.variationsBySku.get(sku) ??
+        (wooInfo.variationsBySku.size > 0
+          ? undefined  // variable product with unmatched SKU — skip
+          : wooInfo.defaultPrice)
+
+      if (correctPrice === undefined) {
+        if (VERBOSE)
+          console.log(`    [SKIP] "${mp.handle}" SKU "${sku}" — no matching WooCommerce variation`)
+        skippedVariants++
+        continue
+      }
+
+      // Find the INR price entry for this variant
+      const prices: any[] = variant.prices || []
+      const inrPrice = prices.find((p: any) => p.currency_code === "inr")
+
+      if (!inrPrice) {
+        if (VERBOSE) console.log(`    [SKIP] "${mp.handle}" SKU "${sku}" — no INR price entry`)
+        skippedVariants++
+        continue
+      }
+
+      const currentAmount = Number(inrPrice.amount)
+
+      if (currentAmount === correctPrice) {
+        if (VERBOSE)
+          console.log(`    [OK] "${mp.handle}" SKU "${sku}" — price already correct (${correctPrice})`)
+        skippedVariants++
+        continue
+      }
+
+      if (DRY_RUN) {
+        console.log(
+          `  [DRY RUN] "${mp.title}" / SKU "${sku}": ` +
+            `INR ${currentAmount} → INR ${correctPrice}`
+        )
+        updatedVariants++
+        continue
+      }
+
+      try {
+        await medusaAdmin("POST", `/products/${mp.id}/variants/${variant.id}`, {
+          prices: [{ id: inrPrice.id, amount: correctPrice, currency_code: "inr" }],
+        })
+        if (VERBOSE) {
+          console.log(
+            `    [OK] "${mp.title}" / SKU "${sku}": INR ${currentAmount} → INR ${correctPrice}`
+          )
+        } else {
+          process.stdout.write(".")
+        }
+        updatedVariants++
+      } catch (e: any) {
+        console.error(
+          `\n  [FAIL] "${mp.title}" / SKU "${sku}": ${e.message.slice(0, 150)}`
+        )
+        failedVariants++
+      }
+
+      await sleep(80)
+    }
+  }
+
+  if (!VERBOSE && !DRY_RUN) console.log("")
+
+  console.log("\n==========================================")
+  console.log("  SYNC-PRICES SUMMARY")
+  console.log("==========================================")
+  console.log(`  Variants updated:  ${updatedVariants}`)
+  console.log(`  Variants skipped:  ${skippedVariants} (already correct / unmatched)`)
+  console.log(`  Variants failed:   ${failedVariants}`)
+  console.log(`  Products skipped:  ${skippedProducts} (not in WooCommerce)`)
+}
+
+// ── MAIN ────────────────────────────────────────────────────────────
+
+// ── FIX SHIPPING PROFILES (standalone) ───────────────────────────
+//
+//  Run with --fix-shipping-profile to retroactively assign the default
+//  shipping profile to every existing Medusa product that is missing one.
+//  Safe to re-run: products that already have a profile are skipped.
+// ─────────────────────────────────────────────────────────────────
+
+async function fixShippingProfiles(): Promise<void> {
+  console.log("\n[FIX-SHIPPING] Assigning default shipping profile to products that are missing one...")
+
+  // 1. Resolve the default shipping profile
+  const shippingProfileId = await ensureDefaultShippingProfile()
+  if (!shippingProfileId) {
+    console.error("  [FAIL] Could not resolve a shipping profile — aborting.")
+    return
+  }
+
+  // 2. Fetch all products (paginated), checking shipping_profile_id
+  let allProducts: any[] = []
+  let offset = 0
+  process.stdout.write("  Fetching all products")
+  while (true) {
+    const res = await medusaAdmin(
+      "GET",
+      `/products?limit=100&offset=${offset}&fields=id,handle,title,shipping_profile_id`
+    )
+    const batch: any[] = res.products || []
+    if (batch.length === 0) break
+    allProducts.push(...batch)
+    process.stdout.write(".")
+    if (batch.length < 100) break
+    offset += 100
+  }
+  console.log(`\n  Found ${allProducts.length} products in Medusa`)
+
+  const needsProfile = allProducts.filter(
+    (p) => !p.shipping_profile_id
+  )
+  console.log(`  ${needsProfile.length} products are missing a shipping profile`)
+
+  if (needsProfile.length === 0) {
+    console.log("  [OK] All products already have a shipping profile — nothing to do.")
+    return
+  }
+
+  let patched = 0, skipped = 0, failed = 0
+
+  for (const product of needsProfile) {
+    if (DRY_RUN) {
+      // shippingProfileId may be the dry-run sentinel if no profiles exist
+      const displayId =
+        shippingProfileId === "__dry_run_placeholder__"
+          ? "<default profile>"
+          : shippingProfileId
+      console.log(
+        `  [DRY RUN] Would patch "${product.title}" (${product.id}) → profile ${displayId}`
+      )
+      patched++
+      continue
+    }
+
+    try {
+      await medusaAdmin("POST", `/products/${product.id}`, {
+        shipping_profile_id: shippingProfileId,
+      })
+      if (VERBOSE) {
+        console.log(`  [OK] "${product.title}" (${product.id}) → ${shippingProfileId}`)
+      } else {
+        process.stdout.write(".")
+      }
+      patched++
+    } catch (e: any) {
+      console.error(`\n  [FAIL] "${product.title}" (${product.id}): ${e.message.slice(0, 150)}`)
+      failed++
+    }
+
+    // Small delay to avoid overwhelming the API
+    await sleep(80)
+  }
+
+  if (!VERBOSE && !DRY_RUN) console.log("")
+
+  console.log("\n==========================================")
+  console.log("  FIX-SHIPPING SUMMARY")
+  console.log("==========================================")
+  console.log(`  Patched:  ${patched}`)
+  console.log(`  Skipped:  ${skipped} (already had a profile)`)
+  console.log(`  Failed:   ${failed}`)
+  console.log(`  Total:    ${allProducts.length}`)
+}
+
+// ── FIX PRICES (standalone) ───────────────────────────────────────
+// Divides all existing product variant prices by 100 to undo the
+// Medusa v1-style priceToPaisa conversion. Medusa v2 stores major units.
+
+async function fixPrices() {
+  console.log("\n[FIX-PRICES] Correcting 100× inflated prices on existing Medusa products...")
+
+  // Fetch all products with their variants and prices
+  let allProducts: any[] = []
+  let offset = 0
+  while (true) {
+    const res = await medusaAdmin("GET", `/products?limit=100&offset=${offset}&fields=id,handle,title,*variants,*variants.prices`)
+    const batch = res.products || []
+    if (batch.length === 0) break
+    allProducts.push(...batch)
+    if (batch.length < 100) break
+    offset += 100
+  }
+
+  console.log(`  Found ${allProducts.length} products in Medusa`)
+
+  let updated = 0, skipped = 0, failed = 0
+
+  for (const product of allProducts) {
+    const variants = product.variants || []
+    let productUpdated = false
+
+    for (const variant of variants) {
+      const prices = variant.prices || []
+      for (const price of prices) {
+        const oldAmount = Number(price.amount)
+        if (oldAmount <= 0) continue
+
+        // Only fix prices that look inflated (> 100, divisible by 100 or close)
+        const newAmount = oldAmount / 100
+        if (newAmount < 1) continue // skip if result would be < 1 rupee
+
+        if (DRY_RUN) {
+          console.log(`  [DRY RUN] "${product.title}" variant ${variant.id}: ${price.currency_code} ${oldAmount} -> ${newAmount}`)
+          productUpdated = true
+          continue
+        }
+
+        try {
+          await medusaAdmin("POST", `/products/${product.id}/variants/${variant.id}`, {
+            prices: [{ id: price.id, amount: newAmount, currency_code: price.currency_code }],
+          })
+          productUpdated = true
+        } catch (e: any) {
+          console.error(`  [FAIL] "${product.title}" variant ${variant.id}: ${e.message.slice(0, 150)}`)
+          failed++
+        }
+      }
+    }
+
+    if (productUpdated) {
+      console.log(`  [OK] "${product.title}" — prices corrected`)
+      updated++
+    } else {
+      skipped++
+    }
+    await sleep(100)
+  }
+
+  console.log("\n==========================================")
+  console.log("  FIX-PRICES SUMMARY")
+  console.log("==========================================")
+  console.log(`  Updated:  ${updated}`)
+  console.log(`  Skipped:  ${skipped}`)
+  console.log(`  Failed:   ${failed}`)
+  console.log(`  Total:    ${allProducts.length}`)
+}
 
 async function main() {
   console.log("==========================================================")
@@ -1080,11 +1635,14 @@ async function main() {
   console.log("==========================================================")
 
   const flags: string[] = []
-  if (DRY_RUN)          flags.push("DRY RUN")
-  if (FORCE)            flags.push("FORCE (re-migrate existing)")
-  if (SKIP_IMAGES)      flags.push("SKIP IMAGES")
-  if (PATCH_CATEGORIES) flags.push("PATCH CATEGORIES ONLY")
-  if (VERBOSE)          flags.push("VERBOSE")
+  if (DRY_RUN)               flags.push("DRY RUN")
+  if (FORCE)                 flags.push("FORCE (re-migrate existing)")
+  if (SKIP_IMAGES)           flags.push("SKIP IMAGES")
+  if (PATCH_CATEGORIES)      flags.push("PATCH CATEGORIES ONLY")
+  if (FIX_PRICES)            flags.push("FIX PRICES (÷100)")
+  if (FIX_SHIPPING_PROFILE)  flags.push("FIX SHIPPING PROFILES")
+  if (SYNC_PRICES_FROM_WOO)  flags.push("SYNC PRICES FROM WOOCOMMERCE")
+  if (VERBOSE)               flags.push("VERBOSE")
   if (flags.length) console.log(`  Mode: ${flags.join(" | ")}`)
 
   const config = await interactiveSetup()
@@ -1109,6 +1667,30 @@ async function main() {
   console.log(`\n  Source: ${config.wooUrl}`)
   console.log(`  Target: ${MEDUSA_URL}`)
 
+  // --fix-prices is a standalone mode that only needs Medusa auth
+  if (FIX_PRICES) {
+    await authenticate(config.email, config.password)
+    await fixPrices()
+    console.log("\n[DONE] Price fix complete!\n")
+    return
+  }
+
+  // --fix-shipping-profile is a standalone mode that only needs Medusa auth
+  if (FIX_SHIPPING_PROFILE) {
+    await authenticate(config.email, config.password)
+    await fixShippingProfiles()
+    console.log("\n[DONE] Shipping profile fix complete!\n")
+    return
+  }
+
+  // --sync-prices-from-woo needs both Medusa auth and the WooCommerce client
+  if (SYNC_PRICES_FROM_WOO) {
+    await authenticate(config.email, config.password)
+    await syncPricesFromWoo()
+    console.log("\n[DONE] Price sync from WooCommerce complete!\n")
+    return
+  }
+
   if (!DRY_RUN) {
     const confirm = await prompt("\n  This will write to your Medusa instance. Proceed? (y/n): ")
     if (confirm.toLowerCase() !== "y") {
@@ -1118,10 +1700,15 @@ async function main() {
     await authenticate(config.email, config.password)
     console.log("\n[SETUP] Checking store configuration...")
     await ensureIndiaRegion()
+    await ensureStockLocation()
   }
 
   // Preflight: test if /admin/uploads works (R2 configured in Medusa)
   if (!PATCH_CATEGORIES) await checkUploadsEndpoint()
+
+  // Resolve the default shipping profile once — passed into syncProducts so
+  // every product payload includes shipping_profile_id at creation time.
+  const shippingProfileId = await ensureDefaultShippingProfile()
 
   const salesChannelId = await selectOrCreateSalesChannel()
   const categoryMap    = await syncCategories()
@@ -1130,7 +1717,7 @@ async function main() {
     // Standalone mode: only patch categories onto existing products, no product sync
     await patchProductCategories(categoryMap)
   } else {
-    await syncProducts(categoryMap, salesChannelId)
+    await syncProducts(categoryMap, salesChannelId, shippingProfileId)
     // Also patch categories onto any products that were skipped (already existed)
     await patchProductCategories(categoryMap)
   }

@@ -5,11 +5,16 @@
   "description": "WooCommerce to Medusa v2 migration scripts",
   "type": "module",
   "scripts": {
-    "migrate":             "node --env-file=.env --import tsx/esm woo-to-medusa.ts",
-    "migrate:dry":         "node --env-file=.env --import tsx/esm woo-to-medusa.ts --dry-run --verbose",
-    "migrate:force":       "node --env-file=.env --import tsx/esm woo-to-medusa.ts --force",
-    "migrate:images-skip": "node --env-file=.env --import tsx/esm woo-to-medusa.ts --skip-images",
-    "migrate:categories":  "node --env-file=.env --import tsx/esm woo-to-medusa.ts --patch-categories"
+    "migrate":                        "node --env-file=.env --import tsx/esm woo-to-medusa.ts",
+    "migrate:dry":                    "node --env-file=.env --import tsx/esm woo-to-medusa.ts --dry-run --verbose",
+    "migrate:force":                  "node --env-file=.env --import tsx/esm woo-to-medusa.ts --force",
+    "migrate:images-skip":            "node --env-file=.env --import tsx/esm woo-to-medusa.ts --skip-images",
+    "migrate:categories":             "node --env-file=.env --import tsx/esm woo-to-medusa.ts --patch-categories",
+    "migrate:fix-prices":             "node --env-file=.env --import tsx/esm woo-to-medusa.ts --fix-prices",
+    "migrate:fix-shipping-profile":      "node --env-file=.env --import tsx/esm woo-to-medusa.ts --fix-shipping-profile",
+    "migrate:fix-shipping-profile:dry":  "node --env-file=.env --import tsx/esm woo-to-medusa.ts --fix-shipping-profile --dry-run --verbose",
+    "migrate:sync-prices":               "node --env-file=.env --import tsx/esm woo-to-medusa.ts --sync-prices-from-woo",
+    "migrate:sync-prices:dry":           "node --env-file=.env --import tsx/esm woo-to-medusa.ts --sync-prices-from-woo --dry-run --verbose"
   },
   "dependencies": {
     "@woocommerce/woocommerce-rest-api": "^1.0.1"

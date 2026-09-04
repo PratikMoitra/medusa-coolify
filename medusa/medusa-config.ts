@@ -84,9 +84,13 @@ module.exports = defineConfig({
               key_secret: process.env.RAZORPAY_SECRET || "",
               razorpay_account: process.env.RAZORPAY_ACCOUNT || "",
               webhook_secret: process.env.RAZORPAY_WEBHOOK_SECRET || "",
-              manual_expiry_period: 20,
+              // auto_capture: true — Razorpay captures immediately on payment success.
+              // This prevents the race condition where Medusa checks order status
+              // before the payment webhook arrives (order still in "created" state),
+              // which caused the "Payment authorization failed" storefront error.
+              auto_capture: true,
+              automatic_expiry_period: 20,
               refund_speed: "normal",
-              auto_capture: false,
             },
           },
         ],
