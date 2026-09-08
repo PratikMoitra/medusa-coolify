@@ -1,8 +1,8 @@
 diff --git a/.medusa/server/src/providers/payment-razorpay/src/core/razorpay-base.js b/.medusa/server/src/providers/payment-razorpay/src/core/razorpay-base.js
-index 422cf500dcba04dc8996574ae19f8222c1c3c4ba..5553c4198c14ce6f6f636c822a9b104a2e7e4e30 100644
+index 422cf500dcba04dc8996574ae19f8222c1c3c4ba..cacc4e15fbc6c471efa8cb34a7b3ef631d360280 100644
 --- a/.medusa/server/src/providers/payment-razorpay/src/core/razorpay-base.js
 +++ b/.medusa/server/src/providers/payment-razorpay/src/core/razorpay-base.js
-@@ -25,6 +25,12 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
+@@ -25,6 +25,18 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
              },
          });
      }
@@ -12,19 +12,25 @@ index 422cf500dcba04dc8996574ae19f8222c1c3c4ba..5553c4198c14ce6f6f636c822a9b104a
 +        if (response && Array.isArray(response.items)) return response.items;
 +        return [];
 +    }
++    /** Normalize Razorpay fetchPayments response to a plain array. */
++    _normalizePayments(response) {
++        if (Array.isArray(response)) return response;
++        if (response && Array.isArray(response.items)) return response.items;
++        return [];
++    }
      static validateOptions(options) {
          if (!(0, utils_1.isDefined)(options.key_id)) {
              throw new utils_1.MedusaError(utils_1.MedusaError.Types.INVALID_DATA, "key_id is required");
-@@ -91,7 +97,7 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
+@@ -91,7 +103,7 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
              return { status: utils_1.PaymentSessionStatus.PENDING };
          }
          const order = await this.razorpay_.orders.fetch(razorpayOrder.id);
 -        const payments = await this.razorpay_.orders.fetchPayments(razorpayOrder.id);
-+        const payments = this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id));
++        const payments = this._normalizePayments(this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id)));
          if (!order) {
              return { status: utils_1.PaymentSessionStatus.PENDING };
          }
-@@ -101,14 +107,14 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
+@@ -101,14 +113,14 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
                      status: utils_1.PaymentSessionStatus.AUTHORIZED,
                  };
              case "created":
@@ -41,39 +47,47 @@ index 422cf500dcba04dc8996574ae19f8222c1c3c4ba..5553c4198c14ce6f6f636c822a9b104a
                      return { status: utils_1.PaymentSessionStatus.ERROR };
                  }
                  return {
-@@ -149,7 +155,7 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
+@@ -149,7 +161,7 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
              status === utils_1.PaymentSessionStatus.AUTHORIZED &&
              razorpayOrder) {
              try {
 -                const paymentsResponse = await this.razorpay_.orders.fetchPayments(razorpayOrder.id);
-+                const paymentsResponse = this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id));
++                const paymentsResponse = this._normalizePayments(this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id)));
                  const payments = paymentsResponse;
                  for (const payment of payments) {
                      if (payment.status === "authorized") {
-@@ -172,7 +178,7 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
+@@ -172,9 +184,15 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
          if (!razorpayOrder) {
              throw new utils_1.MedusaError(utils_1.MedusaError.Types.INVALID_DATA, "No Razorpay order found");
          }
 -        const paymentsResponse = await this.razorpay_.orders.fetchPayments(razorpayOrder.id);
-+        const paymentsResponse = this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id));
++        const paymentsResponse = this._normalizePayments(this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id)));
          const payments = paymentsResponse;
          const authorizedPayments = payments.filter((p) => p.status === "authorized");
++        const capturedPayments = payments.filter((p) => p.status === "captured");
++        if (authorizedPayments.length === 0 && capturedPayments.length > 0) {
++            // auto_capture already handled it on Razorpay's side — return success
++            const updatedOrder = await this.razorpay_.orders.fetch(razorpayOrder.id);
++            return { data: { razorpayOrder: updatedOrder } };
++        }
          if (authorizedPayments.length === 0) {
-@@ -192,7 +198,7 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
+             throw new utils_1.MedusaError(utils_1.MedusaError.Types.INVALID_DATA, "No authorized payments to capture");
+         }
+@@ -192,7 +210,7 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
          if (!razorpayOrder) {
              throw new utils_1.MedusaError(utils_1.MedusaError.Types.INVALID_DATA, "No Razorpay order found");
          }
 -        const paymentsResponse = await this.razorpay_.orders.fetchPayments(razorpayOrder.id);
-+        const paymentsResponse = this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id));
++        const paymentsResponse = this._normalizePayments(this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id)));
          const payments = paymentsResponse;
          const capturedPayments = payments.filter((p) => p.status === "captured");
          if (capturedPayments.length > 0) {
-@@ -229,7 +235,7 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
+@@ -229,7 +247,7 @@ class RazorpayBase extends utils_1.AbstractPaymentProvider {
          if (!razorpayOrder) {
              throw new utils_1.MedusaError(utils_1.MedusaError.Types.INVALID_DATA, "No Razorpay order found");
          }
 -        const paymentsResponse = await this.razorpay_.orders.fetchPayments(razorpayOrder.id);
-+        const paymentsResponse = this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id));
++        const paymentsResponse = this._normalizePayments(this._normalizePayments(await this.razorpay_.orders.fetchPayments(razorpayOrder.id)));
          const payments = paymentsResponse;
          const eligiblePayment = payments.find((p) => (p.status === "captured" ||
              p.status === "authorized") &&
