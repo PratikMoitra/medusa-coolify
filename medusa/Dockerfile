@@ -9,10 +9,11 @@ RUN apk add --no-cache python3 make g++
 # Install pnpm
 RUN npm install -g pnpm@10.11.1
 
-# Copy package files
+# Copy package files and patches (patches must exist before pnpm install)
 COPY package.json pnpm-lock.yaml* ./
+COPY patches/ ./patches/
 
-# Install dependencies
+# Install dependencies (pnpm.patchedDependencies in package.json applies patches automatically)
 RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
 # Copy source
