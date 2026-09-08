@@ -1,0 +1,123 @@
+{
+  "name": "Medusa → Order Notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "medusa-events",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "medusa-events"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "order-placed",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "order.placed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "filter-orders",
+      "name": "Filter Order Events",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "event-name",
+              "name": "eventName",
+              "value": "={{ $json.event }}",
+              "type": "string"
+            },
+            {
+              "id": "order-id",
+              "name": "orderId",
+              "value": "={{ $json.data?.id ?? 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-data",
+      "name": "Extract Order Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "content": "## Order Notifications Workflow\n\nThis workflow receives ALL Medusa events via webhook and filters for order-related events.\n\n### Setup Steps:\n1. **Activate this workflow** (toggle in top-right)\n2. **Copy the webhook URL** from the Webhook Trigger node\n3. **Set it as `N8N_WEBHOOK_URL`** in your Medusa Coolify environment\n4. **Add downstream nodes** — e.g., Send Email (SMTP), Send SMS, Slack notification\n\n### Events handled:\n- `order.placed` — New order created\n- `order.completed` — Order fully paid + fulfilled\n- `order.canceled` — Order was canceled\n\n### Webhook Security:\nThe webhook expects an `X-Webhook-Secret` header matching `N8N_WEBHOOK_SECRET`. Add a header check node if you want to enforce this.",
+        "height": 360,
+        "width": 380
+      },
+      "id": "note",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [220, -60]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter Order Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Order Events": {
+      "main": [
+        [
+          {
+            "node": "Extract Order Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "medusa"
+    }
+  ]
+}

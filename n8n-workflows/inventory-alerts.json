@@ -1,0 +1,132 @@
+{
+  "name": "Medusa → Inventory Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "medusa-events",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "medusa-inventory"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "inventory-updated",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "inventory",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "product-updated",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "product.updated",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "filter-inventory",
+      "name": "Filter Inventory Events",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "event-name",
+              "name": "eventName",
+              "value": "={{ $json.event }}",
+              "type": "string"
+            },
+            {
+              "id": "item-id",
+              "name": "itemId",
+              "value": "={{ $json.data?.id ?? 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-data",
+      "name": "Extract Inventory Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "content": "## Inventory Alerts Workflow\n\nReceives Medusa events and filters for inventory/product changes.\n\n### Setup Steps:\n1. **Activate this workflow**\n2. This shares the same webhook URL as the Order Notifications workflow\n3. **Add downstream nodes** — e.g., check stock levels via Medusa API, send low-stock alerts\n\n### Events handled:\n- `inventory-item.*` — Inventory level changes\n- `product.updated` — Product details changed\n\n### Tip:\nAdd an HTTP Request node after Extract to call `GET /admin/inventory-items/{id}` and check if `stocked_quantity` is below your threshold.",
+        "height": 300,
+        "width": 380
+      },
+      "id": "note",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [220, -40]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter Inventory Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Inventory Events": {
+      "main": [
+        [
+          {
+            "node": "Extract Inventory Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "medusa"
+    }
+  ]
+}
