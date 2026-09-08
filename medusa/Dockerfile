@@ -49,15 +49,11 @@ COPY --from=builder --chown=medusa:medusa /app/package.json ./
 COPY --chown=medusa:medusa start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-# Install production deps in the server directory
+# Switch to the server directory
 WORKDIR /app/.medusa/server
-RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
 
-# Debug: show build output and generated package.json
-RUN echo "=== Build output ===" && ls -la /app/.medusa/server/ && \
-    echo "=== package.json ===" && cat /app/.medusa/server/package.json && \
-    echo "=== src/ ===" && ls -la /app/.medusa/server/src/ && \
-    echo "--- Build output verified ---"
+# Production deps install (cached unless package.json changes)
+RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
 
 # Set production environment (critical: prevents CLI from trying to load ts-node)
 ENV NODE_ENV=production
@@ -68,7 +64,8 @@ WORKDIR /app/.medusa/server
 # Mode-aware health check:
 #  - server/shared → HTTP /health endpoint
 #  - worker        → check node process is alive (no HTTP server in worker mode)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
+# start-period=60s: worker passes instantly (pgrep), server needs ~45s to boot
+HEALTHCHECK --interval=15s --timeout=10s --start-period=60s --retries=5 \
   CMD /usr/local/bin/healthcheck.sh
 
 # Expose port

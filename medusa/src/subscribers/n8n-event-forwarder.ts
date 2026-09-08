@@ -3,19 +3,17 @@ import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 /**
  * Subscriber: n8n-event-forwarder
  *
- * Universal catch-all subscriber that forwards ALL Medusa events to n8n
- * via two channels:
+ * Forwards key Medusa events to n8n via two channels:
  *
  *   1. Redis pub/sub channel `medusa:events` (real-time, picked up by
  *      n8n's Redis Trigger node)
- *   2. HTTP webhook POST to n8n (fallback, with retry + shared secret)
+ *   2. HTTP webhook POST to n8n (primary, with retry + shared secret)
  *
- * This dual-channel approach ensures no events are lost: Redis provides
- * sub-millisecond latency, while the webhook acts as a safety net when
- * n8n misses a Redis message (e.g., during restarts).
+ * Note: The wildcard `event: "*"` does NOT work with Medusa's Redis
+ * event bus (BullMQ-based). We explicitly list all events we care about.
  *
  * Configuration (env vars):
- *   - N8N_WEBHOOK_URL:    Internal Docker URL (e.g., http://n8n:5678/webhook/medusa-events)
+ *   - N8N_WEBHOOK_URL:    Webhook endpoint (e.g., https://n8n.example.com/webhook/medusa-events)
  *   - N8N_WEBHOOK_SECRET: Shared secret sent in X-Webhook-Secret header
  *   - REDIS_URL:          Redis connection string (already set for Medusa)
  *
@@ -41,15 +39,12 @@ async function getRedisPublisher(redisUrl: string): Promise<any> {
   if (redisPub && redisPub.status === "ready") return redisPub
 
   if (redisConnecting) {
-    // Another call is already connecting — wait briefly then retry
     await sleep(500)
     return redisPub?.status === "ready" ? redisPub : null
   }
 
   try {
     redisConnecting = true
-    // Dynamic require from pnpm hoisted deps — ioredis is a transitive
-    // dependency of @medusajs/medusa/event-bus-redis
     const Redis = require("ioredis")
     redisPub = new Redis(redisUrl, {
       maxRetriesPerRequest: 1,
@@ -67,25 +62,30 @@ async function getRedisPublisher(redisUrl: string): Promise<any> {
 }
 
 export default async function n8nEventForwarder({
-  event: { name, data },
+  event,
   container,
-}: SubscriberArgs) {
+}: SubscriberArgs<Record<string, any>>) {
   const logger = container.resolve("logger")
   const webhookUrl = process.env.N8N_WEBHOOK_URL
   const webhookSecret = process.env.N8N_WEBHOOK_SECRET
   const redisUrl = process.env.REDIS_URL
 
-  // Skip forwarding our own internal noise
   if (!webhookUrl && !redisUrl) return
 
+  // Safely extract event name and data
+  const eventName = (event as any)?.name ?? "unknown"
+  const eventData = event?.data ?? {}
+
   const payload = {
-    event: name,
-    data,
+    event: eventName,
+    data: eventData,
     timestamp: new Date().toISOString(),
     source: "medusa",
   }
 
   const jsonPayload = JSON.stringify(payload)
+
+  logger.info(`[n8n-forwarder] Forwarding event "${eventName}"`)
 
   // ── Channel 1: Redis pub/sub ──────────────────────────────────────
   if (redisUrl) {
@@ -95,14 +95,13 @@ export default async function n8nEventForwarder({
         await pub.publish(N8N_REDIS_CHANNEL, jsonPayload)
       }
     } catch (err: any) {
-      // Never let Redis failures block the event flow
       logger.warn(
-        `[n8n-forwarder] Redis pub/sub failed for "${name}": ${err?.message ?? String(err)}`
+        `[n8n-forwarder] Redis pub/sub failed for "${eventName}": ${err?.message ?? String(err)}`
       )
     }
   }
 
-  // ── Channel 2: Webhook POST (fallback) ────────────────────────────
+  // ── Channel 2: Webhook POST ───────────────────────────────────────
   if (!webhookUrl) return
 
   for (let attempt = 1; attempt <= MAX_WEBHOOK_RETRIES; attempt++) {
@@ -114,35 +113,74 @@ export default async function n8nEventForwarder({
           ...(webhookSecret ? { "X-Webhook-Secret": webhookSecret } : {}),
         },
         body: jsonPayload,
-        signal: AbortSignal.timeout(5000), // 5 second timeout
+        signal: AbortSignal.timeout(5000),
       })
 
       if (response.ok) {
-        return // Success — done
+        logger.info(`[n8n-forwarder] Event "${eventName}" delivered to n8n`)
+        return
       }
 
       logger.warn(
         `[n8n-forwarder] Webhook attempt ${attempt}/${MAX_WEBHOOK_RETRIES} ` +
-        `for "${name}" returned ${response.status}`
+        `for "${eventName}" returned ${response.status}`
       )
     } catch (err: any) {
       logger.warn(
         `[n8n-forwarder] Webhook attempt ${attempt}/${MAX_WEBHOOK_RETRIES} ` +
-        `for "${name}" failed: ${err?.message ?? String(err)}`
+        `for "${eventName}" failed: ${err?.message ?? String(err)}`
       )
     }
 
-    // Exponential backoff between retries
     if (attempt < MAX_WEBHOOK_RETRIES) {
       await sleep(RETRY_DELAY_MS * attempt)
     }
   }
 
   logger.error(
-    `[n8n-forwarder] All ${MAX_WEBHOOK_RETRIES} webhook attempts failed for event "${name}"`
+    `[n8n-forwarder] All ${MAX_WEBHOOK_RETRIES} webhook attempts failed for event "${eventName}"`
   )
 }
 
+/**
+ * Explicit event list — wildcard "*" does NOT work with Redis event bus.
+ * Add more events as needed.
+ */
 export const config: SubscriberConfig = {
-  event: "*", // Listen to ALL Medusa events
+  event: [
+    // Orders
+    "order.placed",
+    "order.updated",
+    "order.completed",
+    "order.canceled",
+    "order.fulfillment_created",
+    "order.fulfillment_canceled",
+    "order.return_requested",
+    "order.return_received",
+    "order.refund_created",
+    // Payments
+    "payment.captured",
+    "payment.refunded",
+    "payment.updated",
+    // Customers
+    "customer.created",
+    "customer.updated",
+    // Products
+    "product.created",
+    "product.updated",
+    "product.deleted",
+    // Inventory
+    "inventory-item.created",
+    "inventory-item.updated",
+    // Cart
+    "cart.created",
+    "cart.updated",
+    "cart.completed",
+    // Fulfillment
+    "fulfillment.created",
+    "fulfillment.updated",
+    "fulfillment.canceled",
+    // Shipping
+    "shipment.created",
+  ],
 }
