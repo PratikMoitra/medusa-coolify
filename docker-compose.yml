@@ -69,6 +69,13 @@ services:
       - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
       - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
       - R2_BUCKET=${R2_BUCKET:-medusa-media}
+      # n8n event forwarding
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
+      - N8N_WEBHOOK_SECRET=${N8N_WEBHOOK_SECRET:-}
+      # ShipRocket fulfillment
+      - SHIPROCKET_EMAIL=${SHIPROCKET_EMAIL:-}
+      - SHIPROCKET_PASSWORD=${SHIPROCKET_PASSWORD:-}
+      - SHIPROCKET_TEST_MODE=${SHIPROCKET_TEST_MODE:-true}
     networks:
       - medusa_network
     healthcheck:
@@ -109,6 +116,13 @@ services:
       - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
       - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
       - R2_BUCKET=${R2_BUCKET:-medusa-media}
+      # n8n event forwarding
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
+      - N8N_WEBHOOK_SECRET=${N8N_WEBHOOK_SECRET:-}
+      # ShipRocket fulfillment
+      - SHIPROCKET_EMAIL=${SHIPROCKET_EMAIL:-}
+      - SHIPROCKET_PASSWORD=${SHIPROCKET_PASSWORD:-}
+      - SHIPROCKET_TEST_MODE=${SHIPROCKET_TEST_MODE:-true}
     networks:
       - medusa_network
 
