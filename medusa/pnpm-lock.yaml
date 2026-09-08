@@ -4,13 +4,18 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@alchemilla/medusa-razorpay@0.1.0':
+    hash: 7012699646f5df6038392638b7003802fb3a818660dc1dedcc36394a83ed8ffa
+    path: patches/@alchemilla__medusa-razorpay@0.1.0.patch
+
 importers:
 
   .:
     dependencies:
       '@alchemilla/medusa-razorpay':
         specifier: ^0.1.0
-        version: 0.1.0(@medusajs/framework@2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0))(@medusajs/medusa@2.15.3)
+        version: 0.1.0(patch_hash=7012699646f5df6038392638b7003802fb3a818660dc1dedcc36394a83ed8ffa)(@medusajs/framework@2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0))(@medusajs/medusa@2.15.3)
       '@medusajs/admin-sdk':
         specifier: 2.15.3
         version: 2.15.3
@@ -5938,7 +5943,7 @@ packages:
 
 snapshots:
 
-  '@alchemilla/medusa-razorpay@0.1.0(@medusajs/framework@2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0))(@medusajs/medusa@2.15.3)':
+  '@alchemilla/medusa-razorpay@0.1.0(patch_hash=7012699646f5df6038392638b7003802fb3a818660dc1dedcc36394a83ed8ffa)(@medusajs/framework@2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0))(@medusajs/medusa@2.15.3)':
     dependencies:
       '@medusajs/framework': 2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0)
       '@medusajs/medusa': 2.15.3(@medusajs/admin-sdk@2.15.3)(@medusajs/cli@2.15.3(@types/node@20.19.43))(@medusajs/framework@2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0))(@medusajs/icons@2.15.3(react@18.3.1))(@medusajs/test-utils@2.15.3)(@medusajs/ui@4.1.13(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@swc/core@1.16.1(@swc/helpers@0.5.23))(@types/node@20.19.43)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(awilix@8.0.1)(picomatch@4.0.7)(posthog-node@5.51.6(rxjs@7.8.2))(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)(typescript@5.9.3)(yalc@1.0.0-pre.53)
