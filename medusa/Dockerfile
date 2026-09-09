@@ -56,8 +56,14 @@ COPY --from=builder /app/patches/ ./patches/
 # Production deps install AS ROOT (needs write access to create .pnpm-store)
 RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
 
-# Create writable dirs medusa needs at runtime (node_modules stays root-owned, read-only)
-RUN mkdir -p /app/.medusa/server/.cache /home/medusa && chown -R medusa:medusa /home/medusa /app/.medusa/server/.cache
+# Give medusa user write access to dirs it needs at runtime:
+# - .cache: temp files
+# - node_modules: Medusa creates dist/migrations dirs inside packages at startup
+# - /home/medusa: npm/pnpm cache
+# Using chmod is faster than chown -R and creates a smaller Docker layer
+RUN mkdir -p /app/.medusa/server/.cache /home/medusa \
+    && chown -R medusa:medusa /home/medusa /app/.medusa/server/.cache \
+    && chmod -R o+w /app/.medusa/server/node_modules
 
 # NOW switch to non-root user for runtime
 USER medusa
