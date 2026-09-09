@@ -212,10 +212,8 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
-        <span style="font-size:24px;color:#ffffff;">✓</span>
-      </div>
-      <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Order Confirmed!</h2>
+      <div style="width:40px;height:4px;background:${brand.primary};border-radius:2px;margin:0 auto 20px;"></div>
+      <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Order Confirmed</h2>
       <p style="margin:0;color:#777;font-size:14px;">Hi ${name}, thank you for your order.</p>
     </div>
 
@@ -265,7 +263,7 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
     }
 
     <p style="margin:24px 0 0;text-align:center;color:#999;font-size:13px;">
-      We'll notify you when your order ships. 📦
+      We'll notify you when your order ships.
     </p>`
 
   return {
@@ -280,20 +278,18 @@ export function welcomeEmail(data: CustomerData): { subject: string; html: strin
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
-        <span style="font-size:28px;">🎉</span>
-      </div>
+      <div style="width:40px;height:4px;background:${brand.primary};border-radius:2px;margin:0 auto 20px;"></div>
       <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Welcome, ${name}!</h2>
       <p style="margin:0;color:#777;font-size:14px;">Your account has been created at ${data.storeName}.</p>
     </div>
 
-    <div style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:24px;text-align:center;">
-      <p style="margin:0 0 4px;color:#555;font-size:14px;">You can now:</p>
-      <ul style="list-style:none;padding:0;margin:12px 0 0;">
-        <li style="padding:6px 0;color:#333;font-size:14px;">✨ Track your orders in real-time</li>
-        <li style="padding:6px 0;color:#333;font-size:14px;">💝 Save items to your wishlist</li>
-        <li style="padding:6px 0;color:#333;font-size:14px;">🎁 Get exclusive member offers</li>
-      </ul>
+    <div style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:24px;">
+      <p style="margin:0 0 12px;color:#555;font-size:14px;font-weight:600;">You can now:</p>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr><td style="padding:8px 0;color:#333;font-size:14px;border-bottom:1px solid #eee;">Track your orders in real-time</td></tr>
+        <tr><td style="padding:8px 0;color:#333;font-size:14px;border-bottom:1px solid #eee;">Save items to your wishlist</td></tr>
+        <tr><td style="padding:8px 0;color:#333;font-size:14px;">Get exclusive member offers</td></tr>
+      </table>
     </div>
 
     ${
@@ -307,7 +303,7 @@ export function welcomeEmail(data: CustomerData): { subject: string; html: strin
     }`
 
   return {
-    subject: `Welcome to ${data.storeName}! 🎉`,
+    subject: `Welcome to ${data.storeName}!`,
     html: baseLayout(data.storeName, content),
   }
 }
@@ -318,9 +314,7 @@ export function passwordResetEmail(data: PasswordResetData): { subject: string; 
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
-        <span style="font-size:28px;">🔒</span>
-      </div>
+      <div style="width:40px;height:4px;background:${brand.primary};border-radius:2px;margin:0 auto 20px;"></div>
       <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Reset Your Password</h2>
       <p style="margin:0;color:#777;font-size:14px;">Hi ${name}, we received a password reset request.</p>
     </div>
@@ -351,9 +345,7 @@ export function refundEmail(data: RefundData): { subject: string; html: string }
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
-        <span style="font-size:28px;">💰</span>
-      </div>
+      <div style="width:40px;height:4px;background:${brand.primary};border-radius:2px;margin:0 auto 20px;"></div>
       <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Refund Processed</h2>
       <p style="margin:0;color:#777;font-size:14px;">Your refund for Order #${data.display_id} has been processed.</p>
     </div>
@@ -385,9 +377,7 @@ export function shippingNotificationEmail(data: ShippingData): { subject: string
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
-        <span style="font-size:28px;">🚚</span>
-      </div>
+      <div style="width:40px;height:4px;background:${brand.primary};border-radius:2px;margin:0 auto 20px;"></div>
       <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Your Order Has Shipped!</h2>
       <p style="margin:0;color:#777;font-size:14px;">Order #${data.display_id} is on its way to you.</p>
     </div>
@@ -410,11 +400,11 @@ export function shippingNotificationEmail(data: ShippingData): { subject: string
     }
 
     <p style="margin:24px 0 0;text-align:center;color:#999;font-size:13px;">
-      Estimated delivery: 3-5 business days 🏠
+      Estimated delivery: 3-5 business days
     </p>`
 
   return {
-    subject: `Your order #${data.display_id} has shipped! 📦 — ${data.storeName}`,
+    subject: `Your order #${data.display_id} has shipped — ${data.storeName}`,
     html: baseLayout(data.storeName, content),
   }
 }
