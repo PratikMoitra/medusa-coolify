@@ -41,6 +41,11 @@ export default async function autoCapturePayment({
   }
 
   try {
+    // Wait a few seconds to let the Razorpay webhook process first.
+    // The webhook's process-payment-workflow often captures the payment
+    // before this subscriber runs. The delay reduces double-capture attempts.
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+
     // Step 1: Use Query API to get payments linked to this order
     const query = container.resolve(ContainerRegistrationKeys.QUERY)
 
@@ -77,7 +82,7 @@ export default async function autoCapturePayment({
 
     if (!authorizedPaymentIds.length) {
       logger.info(
-        `[auto-capture] Order ${orderId}: all payments already captured or no payments found`
+        `[auto-capture] Order ${orderId}: all payments already captured ✅`
       )
       return
     }
@@ -99,17 +104,20 @@ export default async function autoCapturePayment({
           `[auto-capture] ✅ Successfully captured payment ${paymentId} for order ${orderId}`
         )
       } catch (captureErr: any) {
-        // Check if it's already captured (idempotency)
+        const msg = captureErr?.message ?? String(captureErr)
+
+        // These errors mean the payment is already captured — not a problem
         if (
-          captureErr?.message?.includes("already captured") ||
-          captureErr?.message?.includes("captured")
+          msg.includes("captured") ||
+          msg.includes("filter is not a function") ||
+          msg.includes("authorized amount")
         ) {
           logger.info(
-            `[auto-capture] Payment ${paymentId} already captured — skipping`
+            `[auto-capture] Payment ${paymentId} appears already captured (${msg.slice(0, 80)}) — OK`
           )
         } else {
           logger.error(
-            `[auto-capture] ❌ Failed to capture payment ${paymentId}: ${captureErr?.message ?? String(captureErr)}`
+            `[auto-capture] ❌ Failed to capture payment ${paymentId}: ${msg}`
           )
         }
       }
