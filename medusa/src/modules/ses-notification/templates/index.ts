@@ -133,13 +133,13 @@ function getBrand(storeName: string): BrandConfig {
 
 function formatCurrency(amount: number, currency: string): string {
   const symbol = currency.toLowerCase() === "inr" ? "₹" : currency.toUpperCase() + " "
-  return `${symbol}${(amount / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
+  return `${symbol}${amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
 }
 
 function baseLayout(storeName: string, content: string): string {
   const brand = getBrand(storeName)
   const logoHtml = brand.logo
-    ? `<img src="${brand.logo}" alt="${storeName}" style="max-height:56px;max-width:200px;display:inline-block;" />`
+    ? `<img src="${brand.logo}" alt="${storeName}" style="max-height:80px;max-width:260px;display:inline-block;" />`
     : `<span style="color:${brand.headerText};font-size:24px;font-weight:700;letter-spacing:0.5px;">${storeName}</span>`
 
   return `<!DOCTYPE html>
