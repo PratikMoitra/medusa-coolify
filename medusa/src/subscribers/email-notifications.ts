@@ -70,11 +70,14 @@ async function resolveStoreName(
       }
     }
 
-    // Determine store URL based on sales channel
+    // Determine store URL based on sales channel name
+    // Each sales channel maps to its own env var for the storefront URL
     const channelLower = channelName.toLowerCase()
     let storeUrl: string
     if (channelLower.includes("kalakavya")) {
       storeUrl = process.env.KALAKAVYA_STOREFRONT_URL || getDefaultStoreUrl()
+    } else if (channelLower.includes("chamkiley")) {
+      storeUrl = process.env.CHAMKILEY_STOREFRONT_URL || getDefaultStoreUrl()
     } else {
       storeUrl = getDefaultStoreUrl()
     }
