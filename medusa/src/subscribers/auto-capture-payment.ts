@@ -65,7 +65,9 @@ export default async function autoCapturePayment({
     const authorizedPaymentIds: string[] = []
 
     for (const collection of order.payment_collections || []) {
+      if (!collection) continue
       for (const payment of collection.payments || []) {
+        if (!payment) continue
         // If captured_at is null/undefined, the payment hasn't been captured yet
         if (!payment.captured_at) {
           authorizedPaymentIds.push(payment.id)
