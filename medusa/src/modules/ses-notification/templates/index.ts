@@ -265,11 +265,11 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
     <div style="text-align:center;margin-top:28px;padding-top:24px;border-top:1px solid #f0f0f0;">
       <p style="margin:0 0 6px;color:#333;font-size:14px;font-weight:600;">Your Live Order Tracker</p>
       <p style="margin:0 0 16px;color:#777;font-size:13px;line-height:1.5;">
-        Scan this QR code anytime to check your order status.<br>
-        You'll get real-time updates on payment confirmation,<br>
-        packing, shipping, and delivery — all in one place.
+        Scan this QR code to visit our store.<br>
+        Log in to your account to track your order status,<br>
+        including shipping and delivery updates.
       </p>
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&ecc=H&data=${encodeURIComponent((data.storeUrl || "") + "/account/orders")}" alt="Order QR Code" style="width:140px;height:140px;display:inline-block;" />
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&ecc=H&data=${encodeURIComponent(data.storeUrl || "")}" alt="Store QR Code" style="width:140px;height:140px;display:inline-block;" />
       <br>
       <img src="${brand.logo}" alt="${data.storeName}" style="max-height:28px;max-width:100px;display:inline-block;margin-top:8px;" />
       <p style="margin:8px 0 0;color:#aaa;font-size:11px;">Order #${data.display_id}</p>
