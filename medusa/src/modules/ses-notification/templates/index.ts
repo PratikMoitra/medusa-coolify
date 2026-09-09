@@ -262,7 +262,12 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
         : ""
     }
 
-    <p style="margin:24px 0 0;text-align:center;color:#999;font-size:13px;">
+    <div style="text-align:center;margin-top:28px;padding-top:24px;border-top:1px solid #f0f0f0;">
+      <p style="margin:0 0 12px;color:#777;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Scan to view your order</p>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent((data.storeUrl || "") + "/order/confirmed/" + data.display_id)}" alt="Order QR Code" style="width:120px;height:120px;display:inline-block;" />
+    </div>
+
+    <p style="margin:20px 0 0;text-align:center;color:#999;font-size:13px;">
       We'll notify you when your order ships.
     </p>`
 
