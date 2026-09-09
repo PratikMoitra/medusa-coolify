@@ -52,6 +52,9 @@ RUN chmod +x /app/start.sh
 # Switch to the server directory
 WORKDIR /app/.medusa/server
 
+# Copy patches so pnpm can resolve patchedDependencies
+COPY --from=builder --chown=medusa:medusa /app/patches/ ./patches/
+
 # Production deps install (cached unless package.json changes)
 RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
 
