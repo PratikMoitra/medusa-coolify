@@ -96,21 +96,37 @@ export default async function emailNotifications({
       case "order.placed": {
         const orderService = container.resolve(Modules.ORDER)
         const order = await orderService.retrieveOrder(data.id, {
-          relations: ["items", "shipping_address"],
+          relations: ["items", "shipping_address", "summary"],
         })
 
         if (!order?.email) break
 
+        // Calculate total: try order.total, then summary, then compute from items
+        const items = (order.items || []).map((item: any) => ({
+          title: item.title || item.product_title || "Item",
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          thumbnail: item.thumbnail,
+        }))
+        const rawTotal = Number(order.total)
+        const summaryTotal = Number((order as any)?.summary?.current_order_total)
+        const computedTotal = items.reduce(
+          (sum: number, item: any) => sum + (item.unit_price * item.quantity),
+          0
+        )
+        const orderTotal = !isNaN(rawTotal) && rawTotal > 0
+          ? rawTotal
+          : !isNaN(summaryTotal) && summaryTotal > 0
+            ? summaryTotal
+            : computedTotal
+
+        logger.info(`[ses-notification] Order total: raw=${order.total}, summary=${(order as any)?.summary?.current_order_total}, computed=${computedTotal}, using=${orderTotal}`)
+
         const { storeName, storeUrl } = await resolveStoreName(container, data.id)
         const email = orderConfirmationEmail({
           display_id: order.display_id,
-          items: (order.items || []).map((item: any) => ({
-            title: item.title || item.product_title || "Item",
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            thumbnail: item.thumbnail,
-          })),
-          total: Number(order.total),
+          items,
+          total: orderTotal,
           currency_code: order.currency_code,
           customer_email: order.email,
           customer_name: order.shipping_address?.first_name,
