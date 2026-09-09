@@ -34,6 +34,17 @@ function getSesService(container: Record<string, any>): SesNotificationService {
 }
 
 /**
+ * Derive the default storefront URL.
+ * Falls back to extracting the first HTTPS URL from STORE_CORS if STOREFRONT_URL is not set.
+ */
+function getDefaultStoreUrl(): string {
+  if (process.env.STOREFRONT_URL) return process.env.STOREFRONT_URL
+  const cors = process.env.STORE_CORS || ""
+  const firstHttps = cors.split(",").map(s => s.trim()).find(s => s.startsWith("https://") && !s.includes("localhost"))
+  return firstHttps || ""
+}
+
+/**
  * Helper to resolve the store/sales-channel name for an order.
  * Tries multiple approaches since Medusa v2 event payloads vary.
  */
@@ -41,6 +52,7 @@ async function resolveStoreName(
   container: Record<string, any>,
   orderId: string
 ): Promise<{ storeName: string; storeUrl: string }> {
+
   try {
     const orderService = container.resolve(Modules.ORDER)
     const order = await orderService.retrieveOrder(orderId)
@@ -59,9 +71,12 @@ async function resolveStoreName(
     }
 
     // Determine store URL based on sales channel
-    let storeUrl = process.env.STOREFRONT_URL || ""
-    if (channelName.toLowerCase().includes("kalakavya")) {
-      storeUrl = process.env.KALAKAVYA_STOREFRONT_URL || storeUrl
+    const channelLower = channelName.toLowerCase()
+    let storeUrl: string
+    if (channelLower.includes("kalakavya")) {
+      storeUrl = process.env.KALAKAVYA_STOREFRONT_URL || getDefaultStoreUrl()
+    } else {
+      storeUrl = getDefaultStoreUrl()
     }
 
     return {
@@ -71,7 +86,7 @@ async function resolveStoreName(
   } catch {
     return {
       storeName: process.env.DEFAULT_STORE_NAME || "Our Store",
-      storeUrl: process.env.STOREFRONT_URL || "",
+      storeUrl: getDefaultStoreUrl(),
     }
   }
 }
@@ -156,7 +171,7 @@ export default async function emailNotifications({
         // For customer events, we don't have a sales channel context.
         // Use the default store name.
         const storeName = process.env.DEFAULT_STORE_NAME || "Our Store"
-        const storeUrl = process.env.STOREFRONT_URL || ""
+        const storeUrl = getDefaultStoreUrl()
 
         const email = welcomeEmail({
           email: customer.email,
