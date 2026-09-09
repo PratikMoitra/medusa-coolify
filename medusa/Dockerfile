@@ -33,7 +33,7 @@ RUN apk add --no-cache python3 wget curl
 # Install pnpm for production
 RUN npm install -g pnpm@10.11.1
 
-# Create non-root user
+# Create non-root user and give ownership of app dir
 RUN addgroup -g 1001 -S medusa && adduser -S medusa -u 1001
 
 # Add mode-aware healthcheck script
@@ -53,20 +53,16 @@ WORKDIR /app/.medusa/server
 # Copy patches so pnpm can resolve patchedDependencies
 COPY --from=builder /app/patches/ ./patches/
 
-# Production deps install AS ROOT (needs write access to create .pnpm-store)
-RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
+# Create home dir and writable cache for medusa user
+RUN mkdir -p /home/medusa /app/.medusa/server/.cache \
+    && chown -R medusa:medusa /home/medusa /app/.medusa/server/.cache /app/.medusa/server
 
-# Give medusa user write access to dirs it needs at runtime:
-# - .cache: temp files
-# - node_modules: Medusa creates dist/migrations dirs inside packages at startup
-# - /home/medusa: npm/pnpm cache
-# Using chmod is faster than chown -R and creates a smaller Docker layer
-RUN mkdir -p /app/.medusa/server/.cache /home/medusa \
-    && chown -R medusa:medusa /home/medusa /app/.medusa/server/.cache \
-    && chmod -R o+w /app/.medusa/server/node_modules
-
-# NOW switch to non-root user for runtime
+# Switch to medusa BEFORE pnpm install so node_modules is owned by medusa
+# This avoids expensive chmod -R or chown -R on hundreds of thousands of files
 USER medusa
+
+# Production deps install as medusa user — files created with medusa ownership
+RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
 
 # Set production environment (critical: prevents CLI from trying to load ts-node)
 ENV NODE_ENV=production
