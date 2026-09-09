@@ -197,28 +197,49 @@ async function syncFulfillmentData(
       return
     }
 
-    // Extract tracking data
+    // Extract tracking data — handles both manual and Shiprocket fulfillments
+    const fulfillmentData = fulfillmentAny?.data || {}
+    
     const trackingNumber =
+      // Shiprocket AWB number
+      fulfillmentData?.awb_code ||
+      fulfillmentData?.awb_number ||
+      // Standard Medusa fields
       fulfillmentAny?.tracking_numbers?.[0] ||
       fulfillmentAny?.labels?.[0]?.tracking_number ||
       null
 
+    // Shiprocket provides courier name in the data
+    const shiprocketCourier = fulfillmentData?.courier_name || fulfillmentData?.courier_company_id || null
+
     const trackingUrl =
+      // Shiprocket tracking URL
+      fulfillmentData?.tracking_url ||
+      // Standard Medusa fields
       fulfillmentAny?.tracking_links?.[0]?.url ||
       fulfillmentAny?.labels?.[0]?.tracking_url ||
-      null
+      // Auto-generate Shiprocket tracking URL from AWB
+      (trackingNumber && fulfillmentAny?.provider_id?.includes("shiprocket")
+        ? `https://shiprocket.co/tracking/${trackingNumber}`
+        : null)
 
-    // Clean up carrier name: "manual_manual" → "Manual"
-    const rawCarrier = fulfillmentAny?.provider_id || null
+    // Clean up carrier name
+    const rawCarrier = shiprocketCourier || fulfillmentAny?.provider_id || null
     const carrier = rawCarrier
       ? rawCarrier
           .replace(/_/g, " ")
           .replace(/\b\w/g, (c: string) => c.toUpperCase())
           .replace(/^Manual Manual$/, "Standard Shipping")
+          .replace(/^Pp Shiprocket Shiprocket$/, shiprocketCourier || "Shiprocket")
       : null
 
     const shippedAt = fulfillmentAny?.shipped_at || null
     const deliveredAt = fulfillmentAny?.delivered_at || null
+    
+    // Shiprocket-specific metadata
+    const shiprocketOrderId = fulfillmentData?.order_id || fulfillmentData?.shiprocket_order_id || null
+    const shipmentId = fulfillmentData?.shipment_id || null
+    const estimatedDelivery = fulfillmentData?.etd || fulfillmentData?.estimated_delivery_date || null
 
     // Build tracking metadata
     const tracking: Record<string, any> = {}
@@ -227,6 +248,9 @@ async function syncFulfillmentData(
     if (trackingUrl) tracking.url = trackingUrl
     if (shippedAt) tracking.shipped_at = new Date(shippedAt).toISOString()
     if (deliveredAt) tracking.delivered_at = new Date(deliveredAt).toISOString()
+    if (shiprocketOrderId) tracking.shiprocket_order_id = shiprocketOrderId
+    if (shipmentId) tracking.shipment_id = shipmentId
+    if (estimatedDelivery) tracking.estimated_delivery = estimatedDelivery
 
     if (Object.keys(tracking).length === 0) {
       logger.info(

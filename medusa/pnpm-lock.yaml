@@ -46,6 +46,9 @@ importers:
       '@medusajs/ui':
         specifier: 4.1.13
         version: 4.1.13(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+      '@sam-ael/medusa-plugin-shiprocket':
+        specifier: ^0.2.1
+        version: 0.2.1(@medusajs/framework@2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0))(@medusajs/medusa@2.15.3)
       '@tanstack/react-query':
         specifier: 5.64.2
         version: 5.64.2(react@18.3.1)
@@ -2665,6 +2668,13 @@ packages:
 
   '@rushstack/ts-command-line@4.23.7':
     resolution: {integrity: sha512-Gr9cB7DGe6uz5vq2wdr89WbVDKz0UeuFEn5H2CfWDe7JvjFFaiV15gi6mqDBTbHhHCWS7w8mF1h3BnIfUndqdA==}
+
+  '@sam-ael/medusa-plugin-shiprocket@0.2.1':
+    resolution: {integrity: sha512-7lRFneP9oFDyxn/4yTLr+ulM/6kJGbBrDUiBJ41B+77nBDbUaiOg5O6NKM2lAsRUcOVblbvyDQdafg5BbgfBfw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@medusajs/framework': 2.12.4
+      '@medusajs/medusa': 2.12.4
 
   '@sendgrid/client@8.1.6':
     resolution: {integrity: sha512-/BHu0hqwXNHr2aLhcXU7RmmlVqrdfrbY9KpaNj00KZHlVOVoRxRVrpOCabIB+91ISXJ6+mLM9vpaVUhK6TwBWA==}
@@ -9318,6 +9328,15 @@ snapshots:
       string-argv: 0.3.2
     transitivePeerDependencies:
       - '@types/node'
+
+  '@sam-ael/medusa-plugin-shiprocket@0.2.1(@medusajs/framework@2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0))(@medusajs/medusa@2.15.3)':
+    dependencies:
+      '@medusajs/framework': 2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0)
+      '@medusajs/medusa': 2.15.3(@medusajs/admin-sdk@2.15.3)(@medusajs/cli@2.15.3(@types/node@20.19.43))(@medusajs/framework@2.15.3(@medusajs/cli@2.15.3(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@5.4.21(@types/node@20.19.43))(zod@4.2.0))(@medusajs/icons@2.15.3(react@18.3.1))(@medusajs/test-utils@2.15.3)(@medusajs/ui@4.1.13(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@swc/core@1.16.1(@swc/helpers@0.5.23))(@types/node@20.19.43)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(awilix@8.0.1)(picomatch@4.0.7)(posthog-node@5.51.6(rxjs@7.8.2))(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)(typescript@5.9.3)(yalc@1.0.0-pre.53)
+      axios: 1.20.0
+    transitivePeerDependencies:
+      - debug
+      - supports-color
 
   '@sendgrid/client@8.1.6':
     dependencies:

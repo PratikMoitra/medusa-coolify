@@ -120,5 +120,32 @@ module.exports = defineConfig({
         ],
       },
     }] : []),
+    // Shiprocket fulfillment provider (only loaded when credentials are set)
+    ...(process.env.SHIPROCKET_EMAIL ? [{
+      resolve: "@medusajs/medusa/fulfillment",
+      options: {
+        providers: [
+          {
+            resolve: "@sam-ael/medusa-plugin-shiprocket",
+            id: "shiprocket",
+            options: {
+              email: process.env.SHIPROCKET_EMAIL,
+              password: process.env.SHIPROCKET_PASSWORD,
+              pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION || "Primary",
+              cod: "false",
+            },
+          },
+        ],
+      },
+    }] : []),
+  ],
+
+  // Plugins (admin UI extensions + webhook routes)
+  plugins: [
+    // Shiprocket admin widget (tracking, labels, manifests, pickup scheduling)
+    ...(process.env.SHIPROCKET_EMAIL ? [{
+      resolve: "@sam-ael/medusa-plugin-shiprocket",
+      options: {},
+    }] : []),
   ],
 });

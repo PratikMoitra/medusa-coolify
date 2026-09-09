@@ -32,6 +32,7 @@
     "@medusajs/framework": "2.15.3",
     "@medusajs/medusa": "2.15.3",
     "@medusajs/ui": "4.1.13",
+    "@sam-ael/medusa-plugin-shiprocket": "^0.2.1",
     "@tanstack/react-query": "5.64.2",
     "react-i18next": "13.5.0",
     "react-router-dom": "6.30.3",
