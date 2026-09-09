@@ -124,6 +124,7 @@ export default async function emailNotifications({
 
         const { storeName, storeUrl } = await resolveStoreName(container, data.id)
         const email = orderConfirmationEmail({
+          order_id: order.id,
           display_id: order.display_id,
           items,
           total: orderTotal,
