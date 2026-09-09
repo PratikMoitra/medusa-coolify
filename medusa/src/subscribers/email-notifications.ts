@@ -159,7 +159,8 @@ export default async function emailNotifications({
       }
 
       // ── Refund Processed ────────────────────────────────────────
-      case "order.refund_created": {
+      case "order.refunded": {
+        // In Medusa v2, 'order.refunded' event data contains the order ID
         const orderService = container.resolve(Modules.ORDER)
         const order = await orderService.retrieveOrder(data.id, {
           relations: ["shipping_address"],
@@ -168,16 +169,16 @@ export default async function emailNotifications({
         if (!order?.email) break
 
         const { storeName } = await resolveStoreName(container, data.id)
-        const orderAny = order as any
-        const latestRefund = orderAny.refunds?.[orderAny.refunds.length - 1]
 
+        // We don't have direct access to refund details from the order module;
+        // send a generic refund notification
         const email = refundEmail({
           display_id: order.display_id,
-          amount: latestRefund?.amount || 0,
+          amount: 0, // Amount not available from this event
           currency_code: order.currency_code,
           customer_email: order.email,
           customer_name: order.shipping_address?.first_name,
-          reason: latestRefund?.reason,
+          reason: undefined,
           storeName,
         })
 
@@ -254,7 +255,7 @@ export const config: SubscriberConfig = {
   event: [
     "order.placed",
     "customer.created",
-    "order.refund_created",
+    "order.refunded",
     "fulfillment.created",
   ],
 }
