@@ -53,20 +53,22 @@ WORKDIR /app/.medusa/server
 # Copy patches so pnpm can resolve patchedDependencies
 COPY --from=builder /app/patches/ ./patches/
 
-# Create home dir, writable cache, and pnpm/npm store dirs for medusa user
-# pnpm needs a store dir (defaults to parent of workdir which is root-owned)
-# npm needs ~/.npm for cache
-RUN mkdir -p /home/medusa/.npm /app/.medusa/server/.cache /app/.pnpm-store \
+# Create ALL writable directories needed by medusa user:
+# - /home/medusa/.config    → pnpm config storage
+# - /home/medusa/.npm       → npm cache, logs
+# - /app/.pnpm-store        → pnpm package store
+# - /app/.medusa/server/.cache → medusa cache
+RUN mkdir -p /home/medusa/.config /home/medusa/.npm /app/.medusa/server/.cache /app/.pnpm-store \
     && chown -R medusa:medusa /home/medusa /app/.medusa/server/.cache /app/.medusa/server /app/.pnpm-store
 
 # Switch to medusa BEFORE pnpm install so node_modules is owned by medusa
-# This avoids expensive chmod -R or chown -R on hundreds of thousands of files
 USER medusa
 
-# Production deps install as medusa user — files created with medusa ownership
-# Set pnpm store to a writable location
-RUN pnpm config set store-dir /app/.pnpm-store && \
-    pnpm install --prod 2>/dev/null || npm install --omit=dev
+# Set pnpm store via env var (avoids needing writable .config at this point)
+ENV PNPM_STORE_DIR=/app/.pnpm-store
+
+# Production deps install as medusa user
+RUN pnpm install --prod --store-dir /app/.pnpm-store 2>/dev/null || npm install --omit=dev
 
 # Set production environment (critical: prevents CLI from trying to load ts-node)
 ENV NODE_ENV=production
