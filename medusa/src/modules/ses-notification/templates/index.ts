@@ -139,7 +139,7 @@ function formatCurrency(amount: number, currency: string): string {
 function baseLayout(storeName: string, content: string): string {
   const brand = getBrand(storeName)
   const logoHtml = brand.logo
-    ? `<img src="${brand.logo}" alt="${storeName}" style="max-height:80px;max-width:260px;display:inline-block;" />`
+    ? `<img src="${brand.logo}" alt="${storeName}" style="max-height:64px;max-width:220px;display:inline-block;" />`
     : `<span style="color:${brand.headerText};font-size:24px;font-weight:700;letter-spacing:0.5px;">${storeName}</span>`
 
   return `<!DOCTYPE html>
@@ -154,9 +154,13 @@ function baseLayout(storeName: string, content: string): string {
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-          <!-- Header with brand logo -->
+          <!-- Accent bar -->
           <tr>
-            <td style="background:${brand.headerBg};padding:24px 40px;text-align:center;">
+            <td style="background:${brand.headerBg};height:6px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <!-- Logo area -->
+          <tr>
+            <td style="padding:28px 40px;text-align:center;border-bottom:1px solid #f0f0f0;">
               ${logoHtml}
             </td>
           </tr>
@@ -170,7 +174,7 @@ function baseLayout(storeName: string, content: string): string {
           <tr>
             <td style="padding:20px 40px;background-color:${brand.footerBg};border-top:1px solid #eee;text-align:center;">
               <p style="margin:0 0 4px;color:${brand.footerText};font-size:12px;">
-                © ${new Date().getFullYear()} ${storeName}. All rights reserved.
+                \u00A9 ${new Date().getFullYear()} ${storeName}. All rights reserved.
               </p>
               <p style="margin:0;color:${brand.footerText};font-size:11px;opacity:0.7;">
                 This is a transactional email. Please do not reply directly.
@@ -208,8 +212,8 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:60px;height:60px;border-radius:50%;background:${brand.primary}18;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;">
-        <span style="font-size:28px;color:${brand.primary};">✓</span>
+      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
+        <span style="font-size:24px;color:#ffffff;">✓</span>
       </div>
       <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Order Confirmed!</h2>
       <p style="margin:0;color:#777;font-size:14px;">Hi ${name}, thank you for your order.</p>
@@ -276,7 +280,7 @@ export function welcomeEmail(data: CustomerData): { subject: string; html: strin
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:60px;height:60px;border-radius:50%;background:${brand.primary}18;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;">
+      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
         <span style="font-size:28px;">🎉</span>
       </div>
       <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Welcome, ${name}!</h2>
@@ -314,7 +318,7 @@ export function passwordResetEmail(data: PasswordResetData): { subject: string; 
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:60px;height:60px;border-radius:50%;background:${brand.primary}18;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;">
+      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
         <span style="font-size:28px;">🔒</span>
       </div>
       <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Reset Your Password</h2>
@@ -347,7 +351,7 @@ export function refundEmail(data: RefundData): { subject: string; html: string }
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:60px;height:60px;border-radius:50%;background:${brand.primary}18;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;">
+      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
         <span style="font-size:28px;">💰</span>
       </div>
       <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Refund Processed</h2>
@@ -381,7 +385,7 @@ export function shippingNotificationEmail(data: ShippingData): { subject: string
 
   const content = `
     <div style="text-align:center;margin-bottom:28px;">
-      <div style="width:60px;height:60px;border-radius:50%;background:${brand.primary}18;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;">
+      <div style="width:52px;height:52px;border-radius:50%;background:${brand.primary};display:inline-block;text-align:center;line-height:52px;margin-bottom:14px;">
         <span style="font-size:28px;">🚚</span>
       </div>
       <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Your Order Has Shipped!</h2>
