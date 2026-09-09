@@ -139,7 +139,7 @@ function formatCurrency(amount: number, currency: string): string {
 function baseLayout(storeName: string, content: string): string {
   const brand = getBrand(storeName)
   const logoHtml = brand.logo
-    ? `<img src="${brand.logo}" alt="${storeName}" style="max-height:64px;max-width:220px;display:inline-block;" />`
+    ? `<img src="${brand.logo}" alt="${storeName}" style="max-height:160px;max-width:500px;display:inline-block;" />`
     : `<span style="color:${brand.headerText};font-size:24px;font-weight:700;letter-spacing:0.5px;">${storeName}</span>`
 
   return `<!DOCTYPE html>
