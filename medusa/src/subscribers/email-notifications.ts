@@ -43,11 +43,21 @@ async function resolveStoreName(
 ): Promise<{ storeName: string; storeUrl: string }> {
   try {
     const orderService = container.resolve(Modules.ORDER)
-    const order = await orderService.retrieveOrder(orderId, {
-      relations: ["sales_channel"],
-    })
-    const channelName = order?.sales_channel?.name || ""
-    
+    const order = await orderService.retrieveOrder(orderId)
+
+    // Try to resolve sales channel name from the order's sales_channel_id
+    let channelName = ""
+    const salesChannelId = (order as any)?.sales_channel_id
+    if (salesChannelId) {
+      try {
+        const scModule = container.resolve(Modules.SALES_CHANNEL)
+        const channel = await scModule.retrieveSalesChannel(salesChannelId)
+        channelName = channel?.name || ""
+      } catch {
+        // Sales channel lookup failed, use default
+      }
+    }
+
     // Determine store URL based on sales channel
     let storeUrl = process.env.STOREFRONT_URL || ""
     if (channelName.toLowerCase().includes("kalakavya")) {
@@ -55,7 +65,7 @@ async function resolveStoreName(
     }
 
     return {
-      storeName: channelName || "Our Store",
+      storeName: channelName || process.env.DEFAULT_STORE_NAME || "Our Store",
       storeUrl,
     }
   } catch {
@@ -86,7 +96,7 @@ export default async function emailNotifications({
       case "order.placed": {
         const orderService = container.resolve(Modules.ORDER)
         const order = await orderService.retrieveOrder(data.id, {
-          relations: ["items", "shipping_address", "sales_channel"],
+          relations: ["items", "shipping_address"],
         })
 
         if (!order?.email) break
@@ -152,7 +162,7 @@ export default async function emailNotifications({
       case "order.refund_created": {
         const orderService = container.resolve(Modules.ORDER)
         const order = await orderService.retrieveOrder(data.id, {
-          relations: ["refunds", "sales_channel"],
+          relations: ["shipping_address"],
         })
 
         if (!order?.email) break
@@ -195,7 +205,7 @@ export default async function emailNotifications({
           const orderService = container.resolve(Modules.ORDER)
           const orders = await orderService.listOrders(
             { id: data.order_id || fulfillmentAny?.order_id },
-            { relations: ["sales_channel", "shipping_address"] }
+            { relations: ["shipping_address"] }
           )
           const order = orders?.[0]
 
