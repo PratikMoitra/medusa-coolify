@@ -269,11 +269,10 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
         You'll get real-time updates on payment confirmation,<br>
         packing, shipping, and delivery — all in one place.
       </p>
-      <div style="display:inline-block;position:relative;width:140px;height:140px;">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&ecc=H&data=${encodeURIComponent((data.storeUrl || "") + "/account/orders/" + data.display_id)}" alt="Order QR Code" style="width:140px;height:140px;display:block;" />
-        <img src="${brand.logo}" alt="" style="position:absolute;top:50%;left:50%;margin-top:-18px;margin-left:-18px;width:36px;height:36px;border-radius:6px;background:#ffffff;padding:3px;box-shadow:0 1px 3px rgba(0,0,0,0.1);" />
-      </div>
-      <p style="margin:10px 0 0;color:#aaa;font-size:11px;">Order #${data.display_id}</p>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&ecc=H&data=${encodeURIComponent((data.storeUrl || "") + "/account/orders")}" alt="Order QR Code" style="width:140px;height:140px;display:inline-block;" />
+      <br>
+      <img src="${brand.logo}" alt="${data.storeName}" style="max-height:28px;max-width:100px;display:inline-block;margin-top:8px;" />
+      <p style="margin:8px 0 0;color:#aaa;font-size:11px;">Order #${data.display_id}</p>
     </div>
 
     <p style="margin:20px 0 0;text-align:center;color:#999;font-size:13px;">
