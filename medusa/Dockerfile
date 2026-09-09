@@ -39,9 +39,7 @@ RUN addgroup -g 1001 -S medusa && adduser -S medusa -u 1001
 # Add mode-aware healthcheck script
 RUN printf '#!/bin/sh\n# Worker mode has no HTTP server - check node process instead\nif [ "${MEDUSA_WORKER_MODE}" = "worker" ]; then\n  pgrep -x node > /dev/null 2>&1\nelse\n  wget -q --spider http://127.0.0.1:9000/health\nfi\n' > /usr/local/bin/healthcheck.sh && chmod +x /usr/local/bin/healthcheck.sh
 
-USER medusa
-
-# Copy built application from builder
+# Copy built application from builder (as root, chown to medusa)
 COPY --from=builder --chown=medusa:medusa /app/.medusa ./.medusa
 COPY --from=builder --chown=medusa:medusa /app/package.json ./
 
@@ -53,10 +51,16 @@ RUN chmod +x /app/start.sh
 WORKDIR /app/.medusa/server
 
 # Copy patches so pnpm can resolve patchedDependencies
-COPY --from=builder --chown=medusa:medusa /app/patches/ ./patches/
+COPY --from=builder /app/patches/ ./patches/
 
-# Production deps install (cached unless package.json changes)
+# Production deps install AS ROOT (needs write access to create .pnpm-store)
 RUN pnpm install --prod 2>/dev/null || npm install --omit=dev
+
+# Fix ownership of everything installed
+RUN chown -R medusa:medusa /app
+
+# NOW switch to non-root user for runtime
+USER medusa
 
 # Set production environment (critical: prevents CLI from trying to load ts-node)
 ENV NODE_ENV=production
@@ -76,4 +80,3 @@ EXPOSE 9000
 
 # Start the Medusa server via diagnostic wrapper script
 CMD ["/app/start.sh"]
-
