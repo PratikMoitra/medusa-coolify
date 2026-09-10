@@ -33,18 +33,16 @@ RUN apk add --no-cache python3 wget curl
 # Install pnpm for production
 RUN npm install -g pnpm@10.11.1
 
-# Create non-root user and give ownership of app dir
-RUN addgroup -g 1001 -S medusa && adduser -S medusa -u 1001
 
 # Add mode-aware healthcheck script
 RUN printf '#!/bin/sh\n# Worker mode has no HTTP server - check node process instead\nif [ "${MEDUSA_WORKER_MODE}" = "worker" ]; then\n  pgrep -x node > /dev/null 2>&1\nelse\n  wget -q --spider http://127.0.0.1:9000/health\nfi\n' > /usr/local/bin/healthcheck.sh && chmod +x /usr/local/bin/healthcheck.sh
 
-# Copy built application from builder (as root, chown to medusa)
-COPY --from=builder --chown=medusa:medusa /app/.medusa ./.medusa
-COPY --from=builder --chown=medusa:medusa /app/package.json ./
+# Copy built application from builder
+COPY --from=builder /app/.medusa ./.medusa
+COPY --from=builder /app/package.json ./
 
 # Copy startup diagnostic script
-COPY --chown=medusa:medusa start.sh /app/start.sh
+COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 # Switch to the server directory
@@ -53,20 +51,13 @@ WORKDIR /app/.medusa/server
 # Copy patches so pnpm can resolve patchedDependencies
 COPY --from=builder /app/patches/ ./patches/
 
-# Install production deps as root (avoids all permission issues with pnpm/npm stores)
+# Install production deps
 RUN pnpm install --prod --store-dir /tmp/.pnpm-store 2>/dev/null || npm install --omit=dev
 
-# Create writable dirs for medusa runtime
-# IMPORTANT: Only chown specific dirs medusa needs to WRITE to at runtime.
-# Do NOT chown the entire server dir — node_modules has 100k+ files and
-# chown -R takes 2+ hours, causing build timeouts. Root-owned node_modules
-# are fine for reading.
-RUN mkdir -p /home/medusa /app/.medusa/server/.cache \
-    && chown -R medusa:medusa /home/medusa /app/.medusa/server/.cache \
-    && chown medusa:medusa /app/.medusa/server
-
-# Switch to non-root user for runtime
-USER medusa
+# NOTE: Running as root because Medusa modules need to create migration
+# directories inside node_modules at startup (e.g., .medusa/server/src/migrations).
+# chown -R on node_modules (100k+ files) takes 2+ hours, causing build timeouts.
+# Container is behind Cloudflare/Coolify reverse proxy, so root is acceptable.
 
 # Set production environment (critical: prevents CLI from trying to load ts-node)
 ENV NODE_ENV=production
