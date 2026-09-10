@@ -56,9 +56,14 @@ COPY --from=builder /app/patches/ ./patches/
 # Install production deps as root (avoids all permission issues with pnpm/npm stores)
 RUN pnpm install --prod --store-dir /tmp/.pnpm-store 2>/dev/null || npm install --omit=dev
 
-# Create writable dirs for medusa runtime, then hand over ownership
+# Create writable dirs for medusa runtime
+# IMPORTANT: Only chown specific dirs medusa needs to WRITE to at runtime.
+# Do NOT chown the entire server dir — node_modules has 100k+ files and
+# chown -R takes 2+ hours, causing build timeouts. Root-owned node_modules
+# are fine for reading.
 RUN mkdir -p /home/medusa /app/.medusa/server/.cache \
-    && chown -R medusa:medusa /home/medusa /app/.medusa/server
+    && chown -R medusa:medusa /home/medusa /app/.medusa/server/.cache \
+    && chown medusa:medusa /app/.medusa/server
 
 # Switch to non-root user for runtime
 USER medusa
