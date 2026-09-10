@@ -138,6 +138,23 @@ module.exports = defineConfig({
         ],
       },
     }] : []),
+    // Google OAuth auth provider (for storefront customer login)
+    ...(process.env.GOOGLE_CLIENT_ID ? [{
+      resolve: "@medusajs/medusa/auth",
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/auth-google",
+            id: "google",
+            options: {
+              clientID: process.env.GOOGLE_CLIENT_ID,
+              clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+              callbackURL: process.env.GOOGLE_CALLBACK_URL || `${process.env.BACKEND_URL}/auth/customer/google/callback`,
+            },
+          },
+        ],
+      },
+    }] : []),
   ],
 
   // Plugins (admin UI extensions + webhook routes)

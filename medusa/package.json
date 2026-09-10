@@ -25,6 +25,7 @@
     "@aws-sdk/client-ses": "^3.1128.0",
     "@medusajs/admin-sdk": "2.15.3",
     "@medusajs/admin-shared": "2.15.3",
+    "@medusajs/auth-google": "^2.20.1",
     "@medusajs/caching": "2.15.3",
     "@medusajs/cli": "2.15.3",
     "@medusajs/dashboard": "2.15.3",
