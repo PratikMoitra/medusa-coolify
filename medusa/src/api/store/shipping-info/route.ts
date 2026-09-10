@@ -116,43 +116,95 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         return a.threshold - b.threshold
       })
 
-      // Convert to tier ranges
-      // If we have: base=₹200, threshold=500→₹100, threshold=1000→₹0
-      // Tiers become: [0,500)=₹200, [500,1000)=₹100, [1000,∞)=₹0
+      // Convert to tier ranges using operator-aware logic
+      // Real data: ₹200 when item_total lte 999, ₹0 when item_total gte 1000
+      // Expected tiers: [0,1000)=₹200, [1000,∞)=₹0
       
       if (priceTiers.length >= 2) {
-        // Separate: base price (no threshold) vs conditional prices (with threshold)
-        const basePrice = priceTiers.find((p) => p.threshold === null)
-        const conditionalPrices = priceTiers
-          .filter((p) => p.threshold !== null)
-          .sort((a, b) => a.threshold! - b.threshold!)
+        // Strategy 1: All prices have operators — use lte/gte to build ranges
+        const allHaveRules = priceTiers.every((p) => p.threshold !== null)
+        
+        if (allHaveRules) {
+          // Group by operator
+          const ltePrices = priceTiers
+            .filter((p) => p.operator === "lte" || p.operator === "lt")
+            .sort((a, b) => a.threshold! - b.threshold!)
+          const gtePrices = priceTiers
+            .filter((p) => p.operator === "gte" || p.operator === "gt")
+            .sort((a, b) => a.threshold! - b.threshold!)
 
-        if (basePrice && conditionalPrices.length > 0) {
-          // Build tiers from base + conditionals
-          tiers.push({
-            min: 0,
-            max: conditionalPrices[0].threshold!,
-            shipping_cost: basePrice.amount,
-          })
+          // Build tiers: lte rules define upper bounds, gte rules define lower bounds
+          // Example: ₹200 when lte 999 → tier [0, 1000) = ₹200
+          //          ₹0 when gte 1000  → tier [1000, ∞)  = ₹0
+          
+          // Collect all breakpoints
+          const breakpoints = new Set<number>()
+          breakpoints.add(0) // always start from 0
+          for (const p of ltePrices) {
+            breakpoints.add(p.threshold! + 1) // lte 999 → next tier starts at 1000
+          }
+          for (const p of gtePrices) {
+            breakpoints.add(p.threshold!)
+          }
+          const sortedBP = [...breakpoints].sort((a, b) => a - b)
 
-          for (let i = 0; i < conditionalPrices.length; i++) {
-            const current = conditionalPrices[i]
-            const next = conditionalPrices[i + 1]
-            tiers.push({
-              min: current.threshold!,
-              max: next?.threshold ?? null,
-              shipping_cost: current.amount,
+          // For each breakpoint range, find the matching price
+          for (let i = 0; i < sortedBP.length; i++) {
+            const rangeStart = sortedBP[i]
+            const rangeEnd = sortedBP[i + 1] ?? null
+            
+            // Find which price applies at rangeStart
+            let matchingPrice = priceTiers.find((p) => {
+              if (p.operator === "lte" || p.operator === "lt") {
+                return rangeStart <= p.threshold!
+              }
+              if (p.operator === "gte" || p.operator === "gt") {
+                return rangeStart >= p.threshold!
+              }
+              return false
             })
+
+            if (matchingPrice) {
+              tiers.push({
+                min: rangeStart,
+                max: rangeEnd,
+                shipping_cost: matchingPrice.amount,
+              })
+            }
           }
         } else {
-          // No clear base price — sort by amount descending and create tiers
-          const sorted = [...priceTiers].sort((a, b) => b.amount - a.amount)
-          for (let i = 0; i < sorted.length; i++) {
+          // Strategy 2: Some prices have no rules (base price) + conditional prices
+          const basePrice = priceTiers.find((p) => p.threshold === null)
+          const conditionalPrices = priceTiers
+            .filter((p) => p.threshold !== null)
+            .sort((a, b) => a.threshold! - b.threshold!)
+
+          if (basePrice && conditionalPrices.length > 0) {
             tiers.push({
-              min: sorted[i].threshold ?? 0,
-              max: sorted[i + 1]?.threshold ?? null,
-              shipping_cost: sorted[i].amount,
+              min: 0,
+              max: conditionalPrices[0].threshold!,
+              shipping_cost: basePrice.amount,
             })
+
+            for (let i = 0; i < conditionalPrices.length; i++) {
+              const current = conditionalPrices[i]
+              const next = conditionalPrices[i + 1]
+              tiers.push({
+                min: current.threshold!,
+                max: next?.threshold ?? null,
+                shipping_cost: current.amount,
+              })
+            }
+          } else {
+            // Fallback: sort by amount descending
+            const sorted = [...priceTiers].sort((a, b) => b.amount - a.amount)
+            for (let i = 0; i < sorted.length; i++) {
+              tiers.push({
+                min: sorted[i].threshold ?? 0,
+                max: sorted[i + 1]?.threshold ?? null,
+                shipping_cost: sorted[i].amount,
+              })
+            }
           }
         }
 
