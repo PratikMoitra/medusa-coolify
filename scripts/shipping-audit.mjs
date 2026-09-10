@@ -229,6 +229,13 @@ async function runMigration(token, providers, shippingOpts, locations) {
     console.log(`\n  Creating: ${C.cyan}${newName} (Shiprocket)${C.reset}...`)
 
     try {
+      // Clean rules — strip internal fields that the create API rejects
+      const cleanRules = (opt.rules || []).map(r => ({
+        attribute: r.attribute,
+        operator: r.operator,
+        value: r.value,
+      }))
+
       const result = await apiPost("/admin/shipping-options", {
         name: `${newName} (Shiprocket)`,
         service_zone_id: serviceZoneId,
@@ -241,7 +248,7 @@ async function runMigration(token, providers, shippingOpts, locations) {
           code: opt.type?.code || "shiprocket-standard",
         },
         data: {},
-        rules: opt.rules || [],
+        rules: cleanRules,
         prices: [
           {
             currency_code: "inr",
