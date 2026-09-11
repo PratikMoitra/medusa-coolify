@@ -238,8 +238,9 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
   const shippingTotal = data.shipping_total ?? 0
   const discountTotal = data.discount_total ?? 0
   const orderTotal = data.total
-  // GST is inclusive — back-calculate from the total: total × 5/105
-  const taxTotal = Math.round(orderTotal * 5 / 105)
+  // GST is inclusive — back-calculate from the total using env-configured rate
+  const gstRate = Number(process.env.GST_RATE || 5)
+  const taxTotal = Math.round(orderTotal * gstRate / (100 + gstRate))
 
   const companyAddressHtml = brand.companyAddress.split("\n").join("<br>")
 
@@ -373,15 +374,14 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
                 <td style="padding:8px 0;text-align:right;color:#1a1a1a;font-size:15px;font-weight:700;">
                   ${formatCurrency(orderTotal, data.currency_code)}
                   ${taxTotal > 0 ? (() => {
+                    const gstRate = Number(process.env.GST_RATE || 5)
+                    const sellerState = (process.env.SELLER_STATE || "Karnataka").toLowerCase()
                     const province = (data.shipping_address?.province || "").toLowerCase()
-                    const isKarnataka = province.includes("karnataka") || province === "ka"
-                    const taxLabel = isKarnataka
-                      ? `CGST 2.5% + SGST 2.5%`
-                      : `IGST 5%`
-                    const halfTax = formatCurrency(Math.round(taxTotal / 2), data.currency_code)
-                    const taxBreakdown = isKarnataka
-                      ? `CGST: ${halfTax} + SGST: ${halfTax}`
-                      : `IGST: ${formatCurrency(taxTotal, data.currency_code)}`
+                    const isIntraState = province.includes(sellerState) || province === "ka"
+                    const halfRate = gstRate / 2
+                    const taxLabel = isIntraState
+                      ? `CGST ${halfRate}% + SGST ${halfRate}%`
+                      : `IGST ${gstRate}%`
                     return `<br><span style="font-size:11px;font-weight:400;color:#777;">(includes ${formatCurrency(taxTotal, data.currency_code)}<br>${taxLabel})</span>`
                   })() : ""}
                 </td>
