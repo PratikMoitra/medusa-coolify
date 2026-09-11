@@ -9,18 +9,30 @@
  *
  * Usage:
  *   MEDUSA_URL=https://testmed.psmhome.no \
- *   ADMIN_EMAIL=pratik@onezipp.com \
- *   ADMIN_PASSWORD='iBDDjcZvYj6*M8Q' \
+ *   MEDUSA_ADMIN_EMAIL=pratik@onezipp.com \
+ *   MEDUSA_ADMIN_PASSWORD='...' \
+ *   INDIA_REGION_ID=reg_xxx \
+ *   INDIA_TAX_REGION_ID=txreg_xxx \
  *   node scripts/setup-gst.mjs
  */
 
-const MEDUSA_URL = process.env.MEDUSA_URL || "https://testmed.psmhome.no"
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "pratik@onezipp.com"
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "iBDDjcZvYj6*M8Q"
+const MEDUSA_URL = process.env.MEDUSA_URL
+const ADMIN_EMAIL = process.env.MEDUSA_ADMIN_EMAIL
+const ADMIN_PASSWORD = process.env.MEDUSA_ADMIN_PASSWORD
 
-// Known IDs from current config
-const INDIA_REGION_ID = "reg_01M1A2Y6ESG7AT7V602M2FMQBP"
-const INDIA_TAX_REGION_ID = "txreg_01M1NWPCCD8N90SWGDX2Q83149"
+const INDIA_REGION_ID = process.env.INDIA_REGION_ID
+const INDIA_TAX_REGION_ID = process.env.INDIA_TAX_REGION_ID
+
+const missing = []
+if (!MEDUSA_URL) missing.push("MEDUSA_URL")
+if (!ADMIN_EMAIL) missing.push("MEDUSA_ADMIN_EMAIL")
+if (!ADMIN_PASSWORD) missing.push("MEDUSA_ADMIN_PASSWORD")
+if (!INDIA_REGION_ID) missing.push("INDIA_REGION_ID")
+if (!INDIA_TAX_REGION_ID) missing.push("INDIA_TAX_REGION_ID")
+if (missing.length) {
+  console.error(`❌ Missing required env vars: ${missing.join(", ")}`)
+  process.exit(1)
+}
 
 async function getToken() {
   const res = await fetch(`${MEDUSA_URL}/auth/user/emailpass`, {
