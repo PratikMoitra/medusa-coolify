@@ -237,8 +237,9 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
   const subtotal = data.subtotal ?? data.items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
   const shippingTotal = data.shipping_total ?? 0
   const discountTotal = data.discount_total ?? 0
-  const taxTotal = data.tax_total ?? 0
   const orderTotal = data.total
+  // GST is inclusive — back-calculate from the total: total × 5/105
+  const taxTotal = Math.round(orderTotal * 5 / 105)
 
   const companyAddressHtml = brand.companyAddress.split("\n").join("<br>")
 
