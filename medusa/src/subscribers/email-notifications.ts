@@ -119,13 +119,26 @@ export default async function emailNotifications({
 
         if (!order?.email) break
 
-        // Calculate total: try order.total, then summary, then compute from items
-        const items = (order.items || []).map((item: any) => ({
-          title: item.title || item.product_title || "Item",
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          thumbnail: item.thumbnail,
-        }))
+        const items = (order.items || []).map((item: any) => {
+          const variantOptions: Record<string, string> = {}
+          if (item.variant?.options) {
+            for (const opt of item.variant.options) {
+              variantOptions[opt.option?.title || opt.name || "Option"] = opt.value
+            }
+          }
+
+          return {
+            title: item.product_title || item.title || "Item",
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            thumbnail: item.thumbnail,
+            sku: item.variant?.sku || item.variant_sku || undefined,
+            weight: item.variant?.weight ? `${item.variant.weight}kg` : undefined,
+            variant_title: item.variant_title || undefined,
+            variant_options: Object.keys(variantOptions).length > 0 ? variantOptions : undefined,
+          }
+        })
+
         const rawTotal = Number(order.total)
         const summaryTotal = Number((order as any)?.summary?.current_order_total)
         const computedTotal = items.reduce(
@@ -146,6 +159,10 @@ export default async function emailNotifications({
           display_id: order.display_id,
           items,
           total: orderTotal,
+          subtotal: Number(order.subtotal) || undefined,
+          shipping_total: Number((order as any).shipping_total) || 0,
+          discount_total: Number((order as any).discount_total) || 0,
+          tax_total: Number((order as any).tax_total) || 0,
           currency_code: order.currency_code,
           customer_email: order.email,
           customer_name: order.shipping_address?.first_name,
