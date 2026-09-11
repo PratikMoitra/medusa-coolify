@@ -114,7 +114,7 @@ const BRANDS: Record<string, BrandConfig> = {
     buttonText: "#FFFFFF",
     logo: "https://test.chamkileystore.in/logo.png",
     companyName: "Kalakavya Ecommerce LLP",
-    companyAddress: "C812 Brigade Northridge Apts,\nKogilu Road, Yelahanka,\nBengaluru 560064\nKarnataka, India",
+    companyAddress: "C812 Brigade Northridge Apts,\nKogilu Road, Near Belahalli Circle,\nYelahanka, Bengaluru 560064\nKarnataka, India",
     gstn: "29ABCFK6093Q1ZG",
     contactPhone: "+91-9874819217",
     contactEmail: "Hello@chamkileystore.in",
@@ -130,7 +130,7 @@ const BRANDS: Record<string, BrandConfig> = {
     buttonText: "#FFFFFF",
     logo: "https://kalakavya.com/lovable-uploads/a8f41497-2bd5-4246-88da-8b6927610a34.png",
     companyName: "Kalakavya Ecommerce LLP",
-    companyAddress: "C812 Brigade Northridge Apts,\nKogilu Road, Yelahanka,\nBengaluru 560064\nKarnataka, India",
+    companyAddress: "C812 Brigade Northridge Apts,\nKogilu Road, Near Belahalli Circle,\nYelahanka, Bengaluru 560064\nKarnataka, India",
     gstn: "29ABCFK6093Q1ZG",
     contactPhone: "+91-9874819217",
     contactEmail: "Hello@kalakavya.in",
@@ -371,7 +371,18 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
                 <td style="padding:8px 0;color:#1a1a1a;font-size:15px;font-weight:700;">Total</td>
                 <td style="padding:8px 0;text-align:right;color:#1a1a1a;font-size:15px;font-weight:700;">
                   ${formatCurrency(orderTotal, data.currency_code)}
-                  ${taxTotal > 0 ? `<br><span style="font-size:11px;font-weight:400;color:#777;">(includes ${formatCurrency(taxTotal, data.currency_code)}<br>5% IGST)</span>` : ""}
+                  ${taxTotal > 0 ? (() => {
+                    const province = (data.shipping_address?.province || "").toLowerCase()
+                    const isKarnataka = province.includes("karnataka") || province === "ka"
+                    const taxLabel = isKarnataka
+                      ? `CGST 2.5% + SGST 2.5%`
+                      : `IGST 5%`
+                    const halfTax = formatCurrency(Math.round(taxTotal / 2), data.currency_code)
+                    const taxBreakdown = isKarnataka
+                      ? `CGST: ${halfTax} + SGST: ${halfTax}`
+                      : `IGST: ${formatCurrency(taxTotal, data.currency_code)}`
+                    return `<br><span style="font-size:11px;font-weight:400;color:#777;">(includes ${formatCurrency(taxTotal, data.currency_code)}<br>${taxLabel})</span>`
+                  })() : ""}
                 </td>
               </tr>
             </table>
