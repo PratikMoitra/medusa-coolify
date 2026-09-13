@@ -61,7 +61,8 @@
   },
   "pnpm": {
     "patchedDependencies": {
-      "@alchemilla/medusa-razorpay@0.1.0": "patches/@alchemilla__medusa-razorpay@0.1.0.patch"
+      "@alchemilla/medusa-razorpay@0.1.0": "patches/@alchemilla__medusa-razorpay@0.1.0.patch",
+      "@sam-ael/medusa-plugin-shiprocket@0.2.1": "patches/@sam-ael__medusa-plugin-shiprocket@0.2.1.patch"
     }
   }
 }

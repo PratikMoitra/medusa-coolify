@@ -1,0 +1,17 @@
+diff --git a/.medusa/server/src/providers/shiprocket/utils/validation.js b/.medusa/server/src/providers/shiprocket/utils/validation.js
+index d0c9d5896789dc6db85a07da06b16e1e2999f949..428f8a2d67cf10e1ca0b0019a18c2461818476a1 100644
+--- a/.medusa/server/src/providers/shiprocket/utils/validation.js
++++ b/.medusa/server/src/providers/shiprocket/utils/validation.js
+@@ -20,7 +20,11 @@ function validateAndSanitizePhone(phone, fieldName = "Phone") {
+         throw new utils_1.MedusaError(utils_1.MedusaError.Types.INVALID_DATA, `${fieldName} is required`);
+     }
+     // Remove all non-numeric characters
+-    const cleaned = phone.toString().replace(/[^0-9]/g, "");
++    let cleaned = phone.toString().replace(/[^0-9]/g, "");
++    // Strip +91 country code (e.g., +919901915009 -> 9901915009)
++    if (cleaned.length === 12 && cleaned.startsWith("91")) cleaned = cleaned.slice(2);
++    // Strip leading 0 (e.g., 09901915009 -> 9901915009)
++    if (cleaned.length === 11 && cleaned.startsWith("0")) cleaned = cleaned.slice(1);
+     // Convert to number
+     const num = Number(cleaned);
+     // Validate
