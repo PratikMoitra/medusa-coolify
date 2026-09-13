@@ -117,6 +117,29 @@ export default async function emailNotifications({
           relations: ["items", "shipping_address", "summary"],
         })
 
+        // Try to get payment details from order
+        let paymentMethod: string | undefined
+        let paymentId: string | undefined
+        let paymentStatus: string | undefined
+        try {
+          const paymentModule = container.resolve("payment" as any)
+          if (paymentModule?.listPaymentCollections) {
+            const collections = await paymentModule.listPaymentCollections(
+              { id: (order as any).payment_collection_id ? [(order as any).payment_collection_id] : undefined },
+              { relations: ["payments"] }
+            )
+            const payment = collections?.[0]?.payments?.[0]
+            if (payment) {
+              const providerData = payment.data as Record<string, any> | undefined
+              paymentMethod = providerData?.method || payment.provider_id || "Razorpay"
+              paymentId = providerData?.id || payment.id
+              paymentStatus = payment.captured_at ? "Paid" : "Pending"
+            }
+          }
+        } catch {
+          // Payment details are optional; continue without them
+        }
+
         if (!order?.email) break
 
         const items = (order.items || []).map((item: any) => {
@@ -170,6 +193,9 @@ export default async function emailNotifications({
           created_at: order.created_at ? String(order.created_at) : undefined,
           storeName,
           storeUrl,
+          payment_method: paymentMethod,
+          payment_id: paymentId,
+          payment_status: paymentStatus,
         })
 
         await ses.sendEmail({

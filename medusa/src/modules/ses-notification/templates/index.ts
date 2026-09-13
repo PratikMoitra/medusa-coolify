@@ -45,6 +45,9 @@ interface OrderData {
   created_at?: string
   storeName: string
   storeUrl?: string
+  payment_method?: string
+  payment_id?: string
+  payment_status?: string
 }
 
 interface CustomerData {
@@ -168,17 +171,25 @@ function formatCurrency(amount: number, currency: string): string {
   return `${symbol}${formatted}`
 }
 
-function generateInvoiceNumber(displayId: number | string, storeName: string, createdAt?: string): string {
-  const date = createdAt ? new Date(createdAt) : new Date()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const year = date.getFullYear()
-  const prefix = storeName.toLowerCase().includes("kalakavya") ? "KK-KV" : "KK-CS"
-  return `${prefix}-${month}-${String(displayId).padStart(3, "0")}${year}`
+function generateInvoiceNumber(displayId: number | string, storeName: string, _createdAt?: string): string {
+  const env = (process.env.ENV || process.env.NODE_ENV || "production").toUpperCase()
+  const isTest = env === "TEST" || env === "DEVELOPMENT" || env === "DEV"
+  const storePrefix = storeName.toLowerCase().includes("kalakavya") ? "KV" : "CS"
+  const paddedId = String(displayId).padStart(5, "0")
+  return isTest ? `TEST-INV-${storePrefix}-${paddedId}` : `INV-${storePrefix}-${paddedId}`
 }
 
 function formatDate(dateStr?: string): string {
   if (!dateStr) return new Date().toLocaleDateString("en-IN", { month: "long", day: "numeric", year: "numeric" })
   return new Date(dateStr).toLocaleDateString("en-IN", { month: "long", day: "numeric", year: "numeric" })
+}
+
+function formatDateTime(dateStr?: string): string {
+  const date = dateStr ? new Date(dateStr) : new Date()
+  return date.toLocaleString("en-IN", {
+    day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: true,
+  })
 }
 
 function baseLayout(storeName: string, content: string): string {
@@ -327,6 +338,10 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
                 <td style="padding:2px 12px 2px 0;color:#777;font-size:12px;">Order Date:</td>
                 <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;">${orderDate}</td>
               </tr>
+              <tr>
+                <td style="padding:2px 12px 2px 0;color:#777;font-size:12px;">Invoice Generated:</td>
+                <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;">${formatDateTime(data.created_at)}</td>
+              </tr>
             </table>
           </td>
         </tr>
@@ -391,6 +406,37 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
         </tr>
       </table>
     </div>
+
+    <!-- Payment Details -->
+    ${data.payment_method || data.payment_id ? `
+    <div style="padding:0 32px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:12px 16px;">
+        <tr>
+          <td style="padding:8px 16px;">
+            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#333;text-transform:uppercase;letter-spacing:0.5px;">Payment Details</p>
+            <table cellpadding="0" cellspacing="0">
+              ${data.payment_method ? `<tr>
+                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">Payment Method:</td>
+                <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;">${data.payment_method}</td>
+              </tr>` : ""}
+              ${data.payment_id ? `<tr>
+                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">Transaction ID:</td>
+                <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;font-family:monospace;">${data.payment_id}</td>
+              </tr>` : ""}
+              <tr>
+                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">Payment Status:</td>
+                <td style="padding:2px 0;font-weight:600;color:#22a55d;font-size:12px;">${data.payment_status || "Paid"}</td>
+              </tr>
+              <tr>
+                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">Amount Paid:</td>
+                <td style="padding:2px 0;font-weight:700;color:#333;font-size:14px;">${formatCurrency(orderTotal, data.currency_code)}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+    ` : ""}
 
     <!-- QR Code Section -->
     ${data.storeUrl ? `
