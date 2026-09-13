@@ -117,27 +117,50 @@ export default async function emailNotifications({
           relations: ["items", "shipping_address", "summary"],
         })
 
-        // Try to get payment details from order
+        // Try to get payment details from order via Medusa Query API
         let paymentMethod: string | undefined
         let paymentId: string | undefined
         let paymentStatus: string | undefined
         try {
-          const paymentModule = container.resolve("payment" as any)
-          if (paymentModule?.listPaymentCollections) {
-            const collections = await paymentModule.listPaymentCollections(
-              { id: (order as any).payment_collection_id ? [(order as any).payment_collection_id] : undefined },
-              { relations: ["payments"] }
-            )
-            const payment = collections?.[0]?.payments?.[0]
-            if (payment) {
-              const providerData = payment.data as Record<string, any> | undefined
-              paymentMethod = providerData?.method || payment.provider_id || "Razorpay"
-              paymentId = providerData?.id || payment.id
-              paymentStatus = payment.captured_at ? "Paid" : "Pending"
+          const query = container.resolve("query" as any)
+          const { data: paymentData } = await query.graph({
+            entity: "order",
+            fields: [
+              "payment_collections.payments.provider_id",
+              "payment_collections.payments.data",
+              "payment_collections.payments.captured_at",
+              "payment_collections.payments.id",
+              "payment_collections.status",
+            ],
+            filters: { id: data.id },
+          })
+
+          const paymentCollections = paymentData?.[0]?.payment_collections
+          const payments = paymentCollections?.[0]?.payments
+          const payment = payments?.[0]
+
+          if (payment) {
+            const providerData = payment.data as Record<string, any> | undefined
+            const providerId = payment.provider_id || ""
+
+            // Determine method name from provider
+            if (providerId.includes("razorpay")) {
+              const rzpMethod = providerData?.method || providerData?.razorpay_method
+              paymentMethod = rzpMethod ? `Razorpay (${rzpMethod})` : "Razorpay"
+            } else {
+              paymentMethod = providerId || "Online Payment"
             }
+
+            // Get Razorpay payment ID from provider data
+            paymentId = providerData?.id || providerData?.razorpay_payment_id || payment.id
+            paymentStatus = payment.captured_at ? "Paid" : (paymentCollections?.[0]?.status || "Pending")
+
+            logger.info(`[ses-notification] Payment details: method=${paymentMethod}, id=${paymentId}, status=${paymentStatus}`)
+          } else {
+            logger.info(`[ses-notification] No payment found for order ${data.id}`)
           }
-        } catch {
-          // Payment details are optional; continue without them
+        } catch (payErr: any) {
+          logger.warn(`[ses-notification] Could not fetch payment details: ${payErr?.message}`)
         }
 
         if (!order?.email) break
