@@ -63,8 +63,12 @@ echo "========================================"
 # Server/shared mode: run migrations and seed admin user
 if [ "${MEDUSA_WORKER_MODE}" != "worker" ]; then
   echo "=== Running DB Migrations (server mode) ==="
-  npx medusa db:migrate
+  npx medusa db:migrate --execute-all-links
   echo "=== Migrations complete ==="
+
+  echo "=== Syncing links (non-interactive) ==="
+  npx medusa db:sync-links --execute-all
+  echo "=== Links synced ==="
 
   # Create admin user if credentials are provided via env vars
   if [ -n "${MEDUSA_ADMIN_EMAIL}" ] && [ -n "${MEDUSA_ADMIN_PASSWORD}" ]; then
