@@ -294,7 +294,7 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
               fontSize: "15px",
               fontWeight: 700,
             }}>
-              {walletBalance !== null ? `₹${walletBalance.toFixed(2)}` : "Loading..."}
+              {walletBalance !== null ? `₹${(walletBalance ?? 0).toFixed(2)}` : "Loading..."}
             </Text>
             {walletBalance !== null && walletBalance < 100 && (
               <Badge color="red" size="small">Low Balance</Badge>
@@ -362,7 +362,7 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
                           {c.courier_name}
                           {i === 0 && <Badge color="green" size="small" style={{ marginLeft: "6px" }}>Cheapest</Badge>}
                         </td>
-                        <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 600 }}>₹{c.rate.toFixed(2)}</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 600 }}>₹{(c.rate ?? 0).toFixed(2)}</td>
                         <td style={{ padding: "8px 12px", textAlign: "center" }}>{c.etd || `${c.estimated_delivery_days}d`}</td>
                         <td style={{ padding: "8px 12px", textAlign: "center" }}>
                           <Badge color={c.is_surface ? "grey" : "blue"} size="small">{c.is_surface ? "Surface" : "Air"}</Badge>
