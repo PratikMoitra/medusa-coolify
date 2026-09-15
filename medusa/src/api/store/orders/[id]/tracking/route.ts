@@ -54,15 +54,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "items.variant_title",
         "items.product_title",
         // Shipping address
-        "shipping_address.first_name",
-        "shipping_address.last_name",
-        "shipping_address.address_1",
-        "shipping_address.address_2",
         "shipping_address.city",
         "shipping_address.province",
         "shipping_address.postal_code",
-        "shipping_address.country_code",
-        "shipping_address.phone",
         // Fulfillments
         "fulfillments.id",
         "fulfillments.created_at",
@@ -129,13 +123,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }))
 
     // Extract shipping address (hide full address for privacy, show city/state)
+    // S5: Only expose city-level location (no name/address/phone)
     const shippingAddress = order.shipping_address
       ? {
-          first_name: order.shipping_address.first_name,
           city: order.shipping_address.city,
           province: order.shipping_address.province,
           postal_code: order.shipping_address.postal_code,
-          country_code: order.shipping_address.country_code,
         }
       : null
 
@@ -344,8 +337,6 @@ function extractPaymentInfo(
 ): {
   status: string
   method: string
-  razorpay_order_id: string | null
-  razorpay_payment_ids: string[]
   amount: number | null
   paid_at: string | null
 } {
@@ -355,8 +346,7 @@ function extractPaymentInfo(
   return {
     status: paymentCollection?.status || "pending",
     method: metadata.payment_method || payment?.provider_id || "unknown",
-    razorpay_order_id: metadata.razorpay_order_id || null,
-    razorpay_payment_ids: metadata.razorpay_payment_ids || [],
+    // S5: Don't expose internal payment IDs on tracking
     amount: payment?.amount || order.total,
     paid_at: payment?.created_at || null,
   }

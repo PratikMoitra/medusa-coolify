@@ -44,15 +44,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "items.thumbnail",
         "items.variant_title",
         "items.product_title",
-        "shipping_address.first_name",
-        "shipping_address.last_name",
-        "shipping_address.address_1",
-        "shipping_address.address_2",
         "shipping_address.city",
         "shipping_address.province",
         "shipping_address.postal_code",
-        "shipping_address.country_code",
-        "shipping_address.phone",
         "fulfillments.id",
         "fulfillments.created_at",
         "fulfillments.canceled_at",
@@ -89,7 +83,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       shipment_id: trackingMeta.shipment_id || null,
     }
 
-    const fulfillmentNotes = extractFulfillmentNotes(order)
+    // S5: Don't expose internal fulfillment/refund notes on public tracking endpoint
+    const fulfillmentNotes: string[] = []
 
     const items = (order.items || []).map((item: any) => ({
       title: item.product_title || item.title,
@@ -99,13 +94,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       thumbnail: item.thumbnail,
     }))
 
+    // S5: Only expose city-level location for public tracking (no name/address/phone)
     const shippingAddress = order.shipping_address
       ? {
-          first_name: order.shipping_address.first_name,
           city: order.shipping_address.city,
           province: order.shipping_address.province,
           postal_code: order.shipping_address.postal_code,
-          country_code: order.shipping_address.country_code,
         }
       : null
 
@@ -115,6 +109,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       name: order.sales_channel?.name || "Store",
       sales_channel_id: order.sales_channel?.id || null,
     }
+
+    // S5: Prevent caching of private order data
+    res.setHeader("Cache-Control", "private, no-store")
+    res.setHeader("X-Robots-Tag", "noindex")
 
     return res.json({
       order: {
@@ -275,8 +273,7 @@ function extractPaymentInfo(order: any, metadata: Record<string, any>) {
   return {
     status: paymentCollection?.status || "pending",
     method: metadata.payment_method || payment?.provider_id || "unknown",
-    razorpay_order_id: metadata.razorpay_order_id || null,
-    razorpay_payment_ids: metadata.razorpay_payment_ids || [],
+    // S5: Don't expose internal payment IDs on public tracking
     amount: payment?.amount || order.total,
     paid_at: payment?.created_at || null,
   }
