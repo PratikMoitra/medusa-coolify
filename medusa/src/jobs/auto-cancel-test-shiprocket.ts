@@ -43,15 +43,33 @@ async function cancelOrder(token: string, orderId: number): Promise<boolean> {
   return res.ok
 }
 
-async function getRecentOrders(token: string): Promise<Array<{ id: number; status: string; created_at: string }>> {
-  const res = await fetch(`${SR_BASE}/orders?per_page=20&sort=created_at&sort_by=desc`, {
+async function getRecentOrders(token: string, logger: { info: (msg: string) => void }): Promise<Array<{ id: number; status: string; created_at: string }>> {
+  const res = await fetch(`${SR_BASE}/orders`, {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
   })
-  const data = await res.json() as { data?: Array<{ id: number; status: string; created_at: string }> }
-  return data.data || []
+  const raw = await res.json() as Record<string, unknown>
+  
+  // Log raw response structure for debugging
+  const keys = Object.keys(raw)
+  logger.info(`[auto-cancel-test] SR /orders response keys: ${keys.join(", ")}. HTTP ${res.status}`)
+  
+  // Shiprocket wraps orders in { data: [...] } or { data: { data: [...] } }
+  let orders: Array<{ id: number; status: string; created_at: string }> = []
+  if (Array.isArray(raw.data)) {
+    orders = raw.data as any
+  } else if (raw.data && typeof raw.data === "object" && Array.isArray((raw.data as any).data)) {
+    orders = (raw.data as any).data
+  }
+  
+  logger.info(`[auto-cancel-test] Parsed ${orders.length} orders from response`)
+  if (orders.length > 0) {
+    logger.info(`[auto-cancel-test] First order: id=${orders[0].id} status="${orders[0].status}" created=${orders[0].created_at}`)
+  }
+  
+  return orders
 }
 
 export default async function autoCancelTestShiprocketOrders(
@@ -67,7 +85,7 @@ export default async function autoCancelTestShiprocketOrders(
   try {
     const token = await getToken()
     logger.info(`[auto-cancel-test] ✅ Auth OK, fetching recent orders...`)
-    const orders = await getRecentOrders(token)
+    const orders = await getRecentOrders(token, logger)
     logger.info(`[auto-cancel-test] Found ${orders.length} orders`)
 
     const now = Date.now()
