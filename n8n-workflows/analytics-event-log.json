@@ -1,0 +1,91 @@
+{
+  "name": "Medusa → Analytics & Event Log",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "medusa-events",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "medusa-analytics"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "event-name",
+              "name": "event",
+              "value": "={{ $json.event }}",
+              "type": "string"
+            },
+            {
+              "id": "data-json",
+              "name": "data",
+              "value": "={{ JSON.stringify($json.data) }}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}",
+              "type": "string"
+            },
+            {
+              "id": "source",
+              "name": "source",
+              "value": "={{ $json.source }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-log",
+      "name": "Format Log Entry",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "content": "## Analytics & Event Log Workflow\n\nCaptures ALL Medusa events for logging, monitoring, and analytics.\n\n### Setup Steps:\n1. **Activate this workflow**\n2. **Add a destination node** after 'Format Log Entry':\n   - **Google Sheets** — append each event as a row\n   - **Postgres/MySQL** — insert into an events table\n   - **Slack** — send critical events to a channel\n   - **HTTP Request** — forward to analytics service\n\n### Payload Structure:\n```json\n{\n  \"event\": \"order.placed\",\n  \"data\": { \"id\": \"order_xxx\", ... },\n  \"timestamp\": \"2026-09-08T14:48:35.000Z\",\n  \"source\": \"medusa\"\n}\n```\n\n### Tip:\nFor Google Sheets, create columns: event | data | timestamp | source",
+        "height": 380,
+        "width": 380
+      },
+      "id": "note",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [220, -80]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Log Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "medusa"
+    }
+  ]
+}

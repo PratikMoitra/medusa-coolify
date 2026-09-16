@@ -17,5 +17,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@alchemilla/medusa-razorpay": "^0.1.0"
   }
 }

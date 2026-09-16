@@ -1,0 +1,362 @@
+import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
+import { Modules } from "@medusajs/framework/utils"
+import { SesNotificationService } from "../modules/ses-notification/service"
+import {
+  orderConfirmationEmail,
+  welcomeEmail,
+  refundEmail,
+  shippingNotificationEmail,
+} from "../modules/ses-notification/templates"
+
+/**
+ * Subscriber: email-notifications
+ *
+ * Listens to key Medusa events and sends branded transactional emails
+ * via Amazon SES. Resolves the correct sender address based on the
+ * order's sales channel (Chamkiley vs Kalakavya).
+ *
+ * This subscriber is SEPARATE from the n8n-event-forwarder — that
+ * forwards events for automation workflows, this one sends customer
+ * emails directly.
+ *
+ * The SES service is instantiated per-invocation (lightweight) to
+ * avoid module registration complexity.
+ */
+
+// Cache the SES service instance across invocations
+let sesService: SesNotificationService | null = null
+
+function getSesService(container: Record<string, any>): SesNotificationService {
+  if (!sesService) {
+    sesService = new SesNotificationService(container)
+  }
+  return sesService
+}
+
+/**
+ * Derive the default storefront URL.
+ * Falls back to extracting the first HTTPS URL from STORE_CORS if STOREFRONT_URL is not set.
+ */
+function getDefaultStoreUrl(): string {
+  if (process.env.STOREFRONT_URL) return process.env.STOREFRONT_URL
+  const cors = process.env.STORE_CORS || ""
+  const firstHttps = cors.split(",").map(s => s.trim()).find(s => s.startsWith("https://") && !s.includes("localhost"))
+  return firstHttps || ""
+}
+
+/**
+ * Helper to resolve the store/sales-channel name for an order.
+ * Tries multiple approaches since Medusa v2 event payloads vary.
+ */
+async function resolveStoreName(
+  container: Record<string, any>,
+  orderId: string
+): Promise<{ storeName: string; storeUrl: string }> {
+
+  try {
+    const orderService = container.resolve(Modules.ORDER)
+    const order = await orderService.retrieveOrder(orderId)
+
+    // Try to resolve sales channel name from the order's sales_channel_id
+    let channelName = ""
+    const salesChannelId = (order as any)?.sales_channel_id
+    if (salesChannelId) {
+      try {
+        const scModule = container.resolve(Modules.SALES_CHANNEL)
+        const channel = await scModule.retrieveSalesChannel(salesChannelId)
+        channelName = channel?.name || ""
+      } catch {
+        // Sales channel lookup failed, use default
+      }
+    }
+
+    // Determine store URL based on sales channel name
+    // Each sales channel maps to its own env var for the storefront URL
+    const channelLower = channelName.toLowerCase()
+    let storeUrl: string
+    if (channelLower.includes("kalakavya")) {
+      storeUrl = process.env.KALAKAVYA_STOREFRONT_URL || getDefaultStoreUrl()
+    } else if (channelLower.includes("chamkiley")) {
+      storeUrl = process.env.CHAMKILEY_STOREFRONT_URL || getDefaultStoreUrl()
+    } else {
+      storeUrl = getDefaultStoreUrl()
+    }
+
+    return {
+      storeName: channelName || process.env.DEFAULT_STORE_NAME || "Our Store",
+      storeUrl,
+    }
+  } catch {
+    return {
+      storeName: process.env.DEFAULT_STORE_NAME || "Our Store",
+      storeUrl: getDefaultStoreUrl(),
+    }
+  }
+}
+
+export default async function emailNotifications({
+  event,
+  container,
+}: SubscriberArgs<Record<string, any>>) {
+  const logger = container.resolve("logger")
+  const ses = getSesService({ logger })
+  const eventName = (event as any)?.name ?? "unknown"
+  const data = event?.data as Record<string, any> | undefined
+
+  if (!data?.id) {
+    logger.warn(`[email-notifications] No ID in event data for "${eventName}"`)
+    return
+  }
+
+  try {
+    switch (eventName) {
+      // ── Order Confirmation ──────────────────────────────────────
+      case "order.placed": {
+        const orderService = container.resolve(Modules.ORDER)
+        const order = await orderService.retrieveOrder(data.id, {
+          relations: ["items", "shipping_address", "summary"],
+        })
+
+        // Try to get payment details from order via Medusa Query API
+        let paymentMethod: string | undefined
+        let paymentId: string | undefined
+        let paymentStatus: string | undefined
+        try {
+          const query = container.resolve("query" as any)
+          const { data: paymentData } = await query.graph({
+            entity: "order",
+            fields: [
+              "payment_collections.payments.provider_id",
+              "payment_collections.payments.data",
+              "payment_collections.payments.captured_at",
+              "payment_collections.payments.id",
+              "payment_collections.status",
+            ],
+            filters: { id: data.id },
+          })
+
+          const paymentCollections = paymentData?.[0]?.payment_collections
+          const payments = paymentCollections?.[0]?.payments
+          const payment = payments?.[0]
+
+          if (payment) {
+            const providerData = payment.data as Record<string, any> | undefined
+            const providerId = payment.provider_id || ""
+
+            // Determine method name from provider
+            if (providerId.includes("razorpay")) {
+              const rzpMethod = providerData?.method || providerData?.razorpay_method
+              paymentMethod = rzpMethod ? `Razorpay (${rzpMethod})` : "Razorpay"
+            } else {
+              paymentMethod = providerId || "Online Payment"
+            }
+
+            // Get Razorpay payment ID from provider data
+            paymentId = providerData?.id || providerData?.razorpay_payment_id || payment.id
+            paymentStatus = payment.captured_at ? "Paid" : (paymentCollections?.[0]?.status || "Pending")
+
+            logger.info(`[ses-notification] Payment details: method=${paymentMethod}, id=${paymentId}, status=${paymentStatus}`)
+          } else {
+            logger.info(`[ses-notification] No payment found for order ${data.id}`)
+          }
+        } catch (payErr: any) {
+          logger.warn(`[ses-notification] Could not fetch payment details: ${payErr?.message}`)
+        }
+
+        if (!order?.email) break
+
+        const items = (order.items || []).map((item: any) => {
+          const variantOptions: Record<string, string> = {}
+          if (item.variant?.options) {
+            for (const opt of item.variant.options) {
+              variantOptions[opt.option?.title || opt.name || "Option"] = opt.value
+            }
+          }
+
+          return {
+            title: item.product_title || item.title || "Item",
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            thumbnail: item.thumbnail,
+            sku: item.variant?.sku || item.variant_sku || undefined,
+            weight: item.variant?.weight ? `${item.variant.weight}kg` : undefined,
+            variant_title: item.variant_title || undefined,
+            variant_options: Object.keys(variantOptions).length > 0 ? variantOptions : undefined,
+          }
+        })
+
+        const rawTotal = Number(order.total)
+        const summaryTotal = Number((order as any)?.summary?.current_order_total)
+        const computedTotal = items.reduce(
+          (sum: number, item: any) => sum + (item.unit_price * item.quantity),
+          0
+        )
+        const orderTotal = !isNaN(rawTotal) && rawTotal > 0
+          ? rawTotal
+          : !isNaN(summaryTotal) && summaryTotal > 0
+            ? summaryTotal
+            : computedTotal
+
+        logger.info(`[ses-notification] Order total: raw=${order.total}, summary=${(order as any)?.summary?.current_order_total}, computed=${computedTotal}, using=${orderTotal}`)
+
+        const { storeName, storeUrl } = await resolveStoreName(container, data.id)
+        const email = orderConfirmationEmail({
+          order_id: order.id,
+          display_id: order.display_id,
+          items,
+          total: orderTotal,
+          subtotal: Number(order.subtotal) || undefined,
+          shipping_total: Number((order as any).shipping_total) || 0,
+          discount_total: Number((order as any).discount_total) || 0,
+          tax_total: Number((order as any).tax_total) || 0,
+          currency_code: order.currency_code,
+          customer_email: order.email,
+          customer_name: order.shipping_address?.first_name,
+          shipping_address: order.shipping_address,
+          created_at: order.created_at ? String(order.created_at) : undefined,
+          storeName,
+          storeUrl,
+          payment_method: paymentMethod,
+          payment_id: paymentId,
+          payment_status: paymentStatus,
+        })
+
+        await ses.sendEmail({
+          to: order.email,
+          subject: email.subject,
+          html: email.html,
+          salesChannelName: storeName,
+        })
+        break
+      }
+
+      // ── Welcome Email ───────────────────────────────────────────
+      case "customer.created": {
+        const customerService = container.resolve(Modules.CUSTOMER)
+        const customer = await customerService.retrieveCustomer(data.id)
+
+        if (!customer?.email) break
+
+        // For customer events, we don't have a sales channel context.
+        // Use the default store name.
+        const storeName = process.env.DEFAULT_STORE_NAME || "Our Store"
+        const storeUrl = getDefaultStoreUrl()
+
+        const email = welcomeEmail({
+          email: customer.email,
+          first_name: customer.first_name ?? undefined,
+          last_name: customer.last_name ?? undefined,
+          storeName,
+          storeUrl,
+        })
+
+        await ses.sendEmail({
+          to: customer.email,
+          subject: email.subject,
+          html: email.html,
+          salesChannelName: storeName,
+        })
+        break
+      }
+
+      // ── Refund Processed ────────────────────────────────────────
+      case "order.refunded": {
+        // In Medusa v2, 'order.refunded' event data contains the order ID
+        const orderService = container.resolve(Modules.ORDER)
+        const order = await orderService.retrieveOrder(data.id, {
+          relations: ["shipping_address"],
+        })
+
+        if (!order?.email) break
+
+        const { storeName } = await resolveStoreName(container, data.id)
+
+        // We don't have direct access to refund details from the order module;
+        // send a generic refund notification
+        const email = refundEmail({
+          display_id: order.display_id,
+          amount: 0, // Amount not available from this event
+          currency_code: order.currency_code,
+          customer_email: order.email,
+          customer_name: order.shipping_address?.first_name,
+          reason: undefined,
+          storeName,
+        })
+
+        await ses.sendEmail({
+          to: order.email,
+          subject: email.subject,
+          html: email.html,
+          salesChannelName: storeName,
+        })
+        break
+      }
+
+      // ── Shipping Notification ───────────────────────────────────
+      case "fulfillment.created": {
+        // Fulfillment events may need to resolve the order differently
+        try {
+          const fulfillmentService = container.resolve(Modules.FULFILLMENT)
+          const fulfillment = await fulfillmentService.retrieveFulfillment(data.id, {
+            relations: ["items"],
+          })
+
+         const fulfillmentAny = fulfillment as any
+
+          // Resolve order from fulfillment context
+          const orderService = container.resolve(Modules.ORDER)
+          const orders = await orderService.listOrders(
+            { id: data.order_id || fulfillmentAny?.order_id },
+            { relations: ["shipping_address"] }
+          )
+          const order = orders?.[0]
+
+          if (!order?.email) break
+
+          const { storeName, storeUrl } = await resolveStoreName(container, order.id)
+
+          const email = shippingNotificationEmail({
+            display_id: order.display_id,
+            tracking_number: fulfillmentAny?.tracking_numbers?.[0],
+            tracking_url: fulfillmentAny?.tracking_links?.[0]?.url,
+            carrier: fulfillmentAny?.provider_id,
+            customer_email: order.email,
+            customer_name: order.shipping_address?.first_name,
+            storeName,
+            storeUrl,
+          })
+
+          await ses.sendEmail({
+            to: order.email,
+            subject: email.subject,
+            html: email.html,
+            salesChannelName: storeName,
+          })
+        } catch (err: any) {
+          logger.warn(
+            `[email-notifications] Could not send shipping email: ${err?.message}`
+          )
+        }
+        break
+      }
+
+      default:
+        // Other events are handled by n8n-event-forwarder, not here
+        break
+    }
+  } catch (err: any) {
+    // Never let email failures crash the event processing
+    logger.error(
+      `[email-notifications] Error handling "${eventName}": ${err?.message ?? String(err)}`
+    )
+  }
+}
+
+export const config: SubscriberConfig = {
+  event: [
+    "order.placed",
+    "customer.created",
+    "order.refunded",
+    "fulfillment.created",
+  ],
+}

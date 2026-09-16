@@ -1,0 +1,2 @@
+patchedDependencies:
+  '@alchemilla/medusa-razorpay@0.1.0': patches/@alchemilla__medusa-razorpay@0.1.0.patch

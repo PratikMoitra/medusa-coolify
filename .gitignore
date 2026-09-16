@@ -4,3 +4,4 @@ node_modules
 !.env.template
 *.log
 .DS_Store
+*.sh
