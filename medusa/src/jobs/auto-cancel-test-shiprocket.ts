@@ -66,7 +66,9 @@ export default async function autoCancelTestShiprocketOrders(
 
   try {
     const token = await getToken()
+    logger.info(`[auto-cancel-test] ✅ Auth OK, fetching recent orders...`)
     const orders = await getRecentOrders(token)
+    logger.info(`[auto-cancel-test] Found ${orders.length} orders`)
 
     const now = Date.now()
     const FIVE_MINUTES = 1 * 60 * 1000  // 1 minute for faster test cleanup
@@ -85,7 +87,9 @@ export default async function autoCancelTestShiprocketOrders(
       const createdAt = new Date(order.created_at).getTime()
       const age = now - createdAt
 
-      // Only process orders older than 5 minutes
+      logger.info(`[auto-cancel-test] SR #${order.id} status="${order.status}" age=${Math.round(age / 1000)}s`)
+
+      // Only process orders older than 1 minute
       if (age < FIVE_MINUTES) {
         // Track as pending
         if (!pendingOrders.has(order.id) && cancellableStatuses.has(order.status)) {
