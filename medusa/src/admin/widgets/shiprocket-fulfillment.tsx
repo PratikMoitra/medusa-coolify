@@ -59,6 +59,7 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
 
   // Wallet
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Activity logs
   const [activities, setActivities] = useState<ActivityEntry[]>([])
@@ -78,15 +79,49 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
     return res.json()
   }, [backendUrl])
 
-  // Load wallet balance
+  // Reusable wallet balance fetcher
+  const fetchWalletBalance = useCallback(async () => {
+    try {
+      const result = await adminFetch("/wallet", { method: "GET" })
+      if (result.success) setWalletBalance(Number(result.balance) || 0)
+    } catch {}
+  }, [adminFetch])
+
+  // Load wallet balance on mount
   useEffect(() => {
-    adminFetch("/wallet", { method: "GET" })
-      .then((result) => {
-        if (result.success) setWalletBalance(Number(result.balance) || 0)
-      })
-      .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    fetchWalletBalance()
+  }, [fetchWalletBalance])
+
+  // Refresh all: wallet + order status
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    try {
+      await fetchWalletBalance()
+      // Re-fetch Shiprocket order status if we have an order_id
+      if (srOrder?.order_id) {
+        const result = await adminFetch("/order-status", {
+          method: "POST",
+          body: { shiprocket_order_id: srOrder.order_id },
+        })
+        if (result.data) {
+          const orders = Array.isArray(result.data.data) ? result.data.data : [result.data.data]
+          const order = orders[0]
+          if (order) {
+            const shipments = Array.isArray(order.shipments) ? order.shipments : order.shipments ? [order.shipments] : []
+            const shipment = shipments[0]
+            setCurrentStatus(order.status || null)
+            setSrOrder(prev => ({
+              ...prev,
+              status: order.status,
+              awb_code: shipment?.awb || order.awb_code || prev?.awb_code,
+              courier_name: shipment?.courier_name || order.courier_name || prev?.courier_name,
+            }))
+          }
+        }
+      }
+    } catch {}
+    setIsRefreshing(false)
+  }, [adminFetch, fetchWalletBalance, srOrder?.order_id])
 
   // Step 1: Check if order is fulfilled
   useEffect(() => {
@@ -255,6 +290,7 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
 
   return (
     <Container className="p-0">
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={{ border: "2px solid #e4e4e7", borderRadius: "8px", overflow: "hidden" }}>
         {/* Header */}
         <div style={{
@@ -269,6 +305,31 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
               </Heading>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                title="Refresh status & wallet"
+                style={{
+                  background: "rgba(255,255,255,0.2)",
+                  border: "1px solid rgba(255,255,255,0.3)",
+                  borderRadius: "6px",
+                  padding: "4px 10px",
+                  cursor: isRefreshing ? "not-allowed" : "pointer",
+                  color: "white",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  transition: "all 0.2s",
+                }}
+              >
+                <span style={{
+                  display: "inline-block",
+                  animation: isRefreshing ? "spin 1s linear infinite" : "none",
+                }}>🔄</span>
+                {isRefreshing ? "..." : "Refresh"}
+              </button>
               {srOrder?.order_id && (
                 <Badge color="purple" size="small">
                   SR #{srOrder.order_id}
