@@ -57,10 +57,12 @@ async function getRecentOrders(token: string): Promise<Array<{ id: number; statu
 export default async function autoCancelTestShiprocketOrders(
   container: MedusaContainer
 ) {
-  const env = (process.env.ENV || "").toUpperCase()
-  if (env !== "TEST") return
-
   const logger = container.resolve("logger") as { info: (msg: string) => void; warn: (msg: string) => void }
+
+  const env = (process.env.ENV || "").toUpperCase()
+  logger.info(`[auto-cancel-test] Job triggered. ENV="${process.env.ENV}" (normalized: "${env}"). Active: ${env === "TEST"}`)
+
+  if (env !== "TEST") return
 
   try {
     const token = await getToken()
