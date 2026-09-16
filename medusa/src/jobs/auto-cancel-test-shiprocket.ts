@@ -67,7 +67,7 @@ export default async function autoCancelTestShiprocketOrders(
     const orders = await getRecentOrders(token)
 
     const now = Date.now()
-    const FIVE_MINUTES = 5 * 60 * 1000
+    const FIVE_MINUTES = 1 * 60 * 1000  // 1 minute for faster test cleanup
 
     // Cancellable statuses (not yet picked up or in transit)
     const cancellableStatuses = new Set([
