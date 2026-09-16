@@ -125,18 +125,20 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
         const orders = Array.isArray(result.data.data) ? result.data.data : [result.data.data]
         const order = orders[0]
         if (order) {
+          const shipments = Array.isArray(order.shipments) ? order.shipments : order.shipments ? [order.shipments] : []
+          const shipment = shipments[0]
           setSrOrder({
             order_id: order.id,
-            shipment_id: order.shipments?.[0]?.id,
-            awb_code: order.shipments?.[0]?.awb || order.awb_code,
-            courier_name: order.shipments?.[0]?.courier_name || order.courier_name,
+            shipment_id: shipment?.id,
+            awb_code: shipment?.awb || order.awb_code,
+            courier_name: shipment?.courier_name || order.courier_name,
             status: order.status,
           })
 
-          if (order.shipments?.[0]?.awb || order.awb_code) {
+          if (shipment?.awb || order.awb_code) {
             setAwbInfo({
-              awb_code: order.shipments?.[0]?.awb || order.awb_code,
-              courier_name: order.shipments?.[0]?.courier_name || order.courier_name,
+              awb_code: shipment?.awb || order.awb_code,
+              courier_name: shipment?.courier_name || order.courier_name,
             })
             setStep("assigned")
             return
