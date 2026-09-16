@@ -56,6 +56,8 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
   const [srOrder, setSrOrder] = useState<ShiprocketOrderData | null>(null)
   const [awbInfo, setAwbInfo] = useState<{ awb_code?: string; courier_name?: string } | null>(null)
   const [pickupInfo, setPickupInfo] = useState<string | null>(null)
+  const [pickupDate, setPickupDate] = useState<string>("")
+  const [showPickupForm, setShowPickupForm] = useState(false)
 
   // Wallet
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
@@ -238,17 +240,28 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
   }
 
   const handleSchedulePickup = async () => {
-    if (!srOrder?.shipment_id) return
+    if (!srOrder?.shipment_id) {
+      setError(`Cannot schedule pickup: no shipment_id found (order_id: ${srOrder?.order_id})`)
+      setStep("error")
+      return
+    }
     setStep("scheduling-pickup")
+    setShowPickupForm(false)
 
     try {
-      const result = await adminFetch("/pickup", {
-        body: { shipment_id: srOrder.shipment_id },
-      })
+      const body: Record<string, unknown> = { shipment_id: srOrder.shipment_id }
+      if (pickupDate) {
+        body.pickup_date = pickupDate
+      }
+
+      const result = await adminFetch("/pickup", { body })
 
       if (result.success) {
-        setPickupInfo(result.pickup_scheduled_date || "Scheduled")
+        setPickupInfo(result.pickup_scheduled_date || pickupDate || "Scheduled")
         setStep("pickup-done")
+      } else if (result.error) {
+        setError(`Pickup failed: ${result.error}`)
+        setStep("error")
       } else {
         setPickupInfo(result.message || "Pickup request submitted")
         setStep("pickup-done")
@@ -491,11 +504,51 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
               </div>
 
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                <Button variant="primary" onClick={handleSchedulePickup}>📦 Schedule Pickup</Button>
+                <Button variant="primary" onClick={() => setShowPickupForm(!showPickupForm)}>
+                  📦 {showPickupForm ? "Cancel" : "Schedule Pickup"}
+                </Button>
                 <Button variant="secondary" onClick={loadActivities} disabled={loadingActivities}>
                   {loadingActivities ? "⏳ Loading..." : showActivities ? "🔽 Hide Activity" : "📋 Show Activity Log"}
                 </Button>
               </div>
+
+              {/* Pickup Date Picker */}
+              {showPickupForm && (
+                <div style={{
+                  marginTop: "12px",
+                  padding: "14px 16px",
+                  background: "#F8FAFC",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "8px",
+                }}>
+                  <Text style={{ fontSize: "12px", fontWeight: 600, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em", color: "#475569" }}>
+                    Pickup Date (optional)
+                  </Text>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <input
+                      type="date"
+                      value={pickupDate}
+                      onChange={(e) => setPickupDate(e.target.value)}
+                      min={new Date().toISOString().split("T")[0]}
+                      max={new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0]}
+                      style={{
+                        flex: 1,
+                        padding: "8px 12px",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: "6px",
+                        fontSize: "13px",
+                        outline: "none",
+                      }}
+                    />
+                    <Button variant="primary" onClick={handleSchedulePickup} size="small">
+                      Confirm Pickup
+                    </Button>
+                  </div>
+                  <Text style={{ fontSize: "11px", color: "#94A3B8", marginTop: "6px" }}>
+                    Leave blank for the earliest available slot. Max 7 days ahead.
+                  </Text>
+                </div>
+              )}
             </div>
           )}
 

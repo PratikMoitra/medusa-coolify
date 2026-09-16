@@ -35,10 +35,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       payload.pickup_date = [pickup_date]
     }
 
-    const data = await shiprocketFetch<PickupResponse>("/shipments/create/pickup", {
+    const logger = req.scope.resolve("logger") as { info: (msg: string) => void }
+    logger.info(`[pickup] Scheduling pickup for shipment_id=${shipment_id}, pickup_date=${pickup_date || "auto"}`)
+
+    const data = await shiprocketFetch<PickupResponse>("/courier/generate/pickup", {
       method: "POST",
       body: payload,
     })
+
+    logger.info(`[pickup] Shiprocket response: ${JSON.stringify(data)}`)
 
     if (data.pickup_status === 1) {
       return res.json({
