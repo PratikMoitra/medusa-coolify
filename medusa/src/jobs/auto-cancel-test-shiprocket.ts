@@ -102,7 +102,10 @@ export default async function autoCancelTestShiprocketOrders(
     ])
 
     for (const order of orders) {
-      const createdAt = new Date(order.created_at).getTime()
+      // Shiprocket returns created_at in IST (UTC+5:30) but without timezone info.
+      // new Date() parses it as UTC, so we subtract 5h30m to correct.
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
+      const createdAt = new Date(order.created_at).getTime() - IST_OFFSET_MS
       const age = now - createdAt
 
       logger.info(`[auto-cancel-test] SR #${order.id} status="${order.status}" age=${Math.round(age / 1000)}s`)
