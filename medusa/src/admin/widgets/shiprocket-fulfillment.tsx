@@ -310,25 +310,39 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
                 disabled={isRefreshing}
                 title="Refresh status & wallet"
                 style={{
-                  background: "rgba(255,255,255,0.2)",
-                  border: "1px solid rgba(255,255,255,0.3)",
+                  background: "rgba(255,255,255,0.15)",
+                  border: "1px solid rgba(255,255,255,0.25)",
                   borderRadius: "6px",
-                  padding: "4px 10px",
-                  cursor: isRefreshing ? "not-allowed" : "pointer",
+                  padding: "6px 12px",
+                  cursor: isRefreshing ? "wait" : "pointer",
                   color: "white",
-                  fontSize: "13px",
-                  fontWeight: 600,
+                  fontSize: "12px",
+                  fontWeight: 500,
                   display: "flex",
                   alignItems: "center",
-                  gap: "4px",
-                  transition: "all 0.2s",
+                  gap: "6px",
+                  transition: "all 0.2s ease",
+                  opacity: isRefreshing ? 0.7 : 1,
+                  letterSpacing: "0.02em",
                 }}
               >
-                <span style={{
-                  display: "inline-block",
-                  animation: isRefreshing ? "spin 1s linear infinite" : "none",
-                }}>🔄</span>
-                {isRefreshing ? "..." : "Refresh"}
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{
+                    animation: isRefreshing ? "spin 0.8s linear infinite" : "none",
+                  }}
+                >
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                </svg>
+                {isRefreshing ? "Refreshing" : "Refresh"}
               </button>
               {srOrder?.order_id && (
                 <Badge color="purple" size="small">
