@@ -512,43 +512,92 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
                 </Button>
               </div>
 
-              {/* Pickup Date Picker */}
-              {showPickupForm && (
-                <div style={{
-                  marginTop: "12px",
-                  padding: "14px 16px",
-                  background: "#F8FAFC",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: "8px",
-                }}>
-                  <Text style={{ fontSize: "12px", fontWeight: 600, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em", color: "#475569" }}>
-                    Pickup Date (optional)
-                  </Text>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    <input
-                      type="date"
-                      value={pickupDate}
-                      onChange={(e) => setPickupDate(e.target.value)}
-                      min={new Date().toISOString().split("T")[0]}
-                      max={new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0]}
-                      style={{
-                        flex: 1,
-                        padding: "8px 12px",
-                        border: "1px solid #CBD5E1",
-                        borderRadius: "6px",
-                        fontSize: "13px",
-                        outline: "none",
-                      }}
-                    />
-                    <Button variant="primary" onClick={handleSchedulePickup} size="small">
-                      Confirm Pickup
-                    </Button>
+              {/* Pickup Slot Picker */}
+              {showPickupForm && (() => {
+                const slots: Array<{ date: string; label: string; dayName: string; isToday: boolean }> = []
+                const now = new Date()
+                const istOffset = 5.5 * 60 * 60 * 1000
+                const istNow = new Date(now.getTime() + istOffset)
+                const istHour = istNow.getUTCHours()
+
+                let daysAdded = 0
+                let offset = istHour >= 14 ? 1 : 0
+
+                while (daysAdded < 5) {
+                  const d = new Date(istNow)
+                  d.setUTCDate(d.getUTCDate() + offset)
+                  const dayOfWeek = d.getUTCDay()
+                  if (dayOfWeek !== 0) {
+                    const yyyy = d.getUTCFullYear()
+                    const mm = String(d.getUTCMonth() + 1).padStart(2, "0")
+                    const dd = String(d.getUTCDate()).padStart(2, "0")
+                    const dateStr = `${yyyy}-${mm}-${dd}`
+                    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                    slots.push({
+                      date: dateStr,
+                      label: `${d.getUTCDate()} ${monthNames[d.getUTCMonth()]}`,
+                      dayName: dayNames[dayOfWeek],
+                      isToday: offset === 0,
+                    })
+                    daysAdded++
+                  }
+                  offset++
+                }
+
+                return (
+                  <div style={{
+                    marginTop: "12px",
+                    padding: "16px",
+                    background: "#F8FAFC",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "8px",
+                  }}>
+                    <Text style={{ fontSize: "11px", fontWeight: 700, marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#475569", display: "block" }}>
+                      Select Pickup Date
+                    </Text>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                      {slots.map((slot) => (
+                        <button
+                          key={slot.date}
+                          onClick={() => setPickupDate(slot.date)}
+                          style={{
+                            flex: "1 1 0",
+                            minWidth: "72px",
+                            padding: "10px 6px",
+                            border: pickupDate === slot.date ? "2px solid #7C3AED" : "1px solid #CBD5E1",
+                            borderRadius: "8px",
+                            background: pickupDate === slot.date ? "#EDE9FE" : "white",
+                            cursor: "pointer",
+                            textAlign: "center",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <div style={{ fontSize: "10px", fontWeight: 600, color: pickupDate === slot.date ? "#7C3AED" : "#94A3B8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            {slot.isToday ? "Today" : slot.dayName}
+                          </div>
+                          <div style={{ fontSize: "15px", fontWeight: 700, color: pickupDate === slot.date ? "#5B21B6" : "#1E293B", marginTop: "2px" }}>
+                            {slot.label}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: "12px", display: "flex", gap: "8px", alignItems: "center" }}>
+                      <Button
+                        variant="primary"
+                        onClick={handleSchedulePickup}
+                        disabled={!pickupDate}
+                        size="small"
+                      >
+                        Confirm Pickup {pickupDate ? `— ${pickupDate}` : ""}
+                      </Button>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>
+                        Courier will assign a time slot automatically
+                      </Text>
+                    </div>
                   </div>
-                  <Text style={{ fontSize: "11px", color: "#94A3B8", marginTop: "6px" }}>
-                    Leave blank for the earliest available slot. Max 7 days ahead.
-                  </Text>
-                </div>
-              )}
+                )
+              })()}
             </div>
           )}
 
