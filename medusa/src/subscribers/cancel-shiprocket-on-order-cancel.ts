@@ -1,4 +1,5 @@
 import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
+import { Modules } from "@medusajs/framework/utils"
 
 const SR_BASE = "https://apiv2.shiprocket.in/v1/external"
 
@@ -25,14 +26,25 @@ async function getToken(): Promise<string> {
   return cachedToken
 }
 
+async function fetchWalletBalance(token: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${SR_BASE}/account/details/wallet-balance`, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const data = (await res.json()) as { data?: { balance_amount?: number } }
+    return data.data?.balance_amount ?? null
+  } catch {
+    return null
+  }
+}
+
 /**
  * When a Medusa order is cancelled, automatically cancel the
- * corresponding Shiprocket order (if one exists).
- *
- * Flow:
- *   1. Look up Shiprocket order by channel_order_id (Medusa display_id)
- *   2. If found and in a cancellable status, cancel it
- *   3. Log the result
+ * corresponding Shiprocket order (if one exists) and persist
+ * cancellation metadata (wallet balance recovery, timestamps).
  */
 export default async function cancelShiprocketOnOrderCancel({
   event,
@@ -53,13 +65,15 @@ export default async function cancelShiprocketOnOrderCancel({
   }
 
   try {
-    // Get the order's display_id from Medusa
-    const orderService = container.resolve("order") as any
+    const orderModule = container.resolve(Modules.ORDER)
     let displayId: string | number | undefined
+    let existingMetadata: Record<string, unknown> = {}
 
     try {
-      const order = await orderService.retrieveOrder(orderId, { select: ["display_id"] })
-      displayId = order?.display_id
+      const order = await orderModule.retrieveOrder(orderId)
+      const orderAny = order as Record<string, unknown>
+      displayId = orderAny.display_id as string | number | undefined
+      existingMetadata = (orderAny.metadata as Record<string, unknown>) || {}
     } catch {
       logger.warn(`[sr-cancel] Could not retrieve order ${orderId}, trying ID as display_id`)
       displayId = orderId
@@ -94,6 +108,8 @@ export default async function cancelShiprocketOnOrderCancel({
       "new", "ready to ship", "pickup scheduled",
     ])
 
+    let anyCancelled = false
+
     for (const srOrder of srOrders) {
       if (!cancellableStatuses.has(srOrder.status)) {
         logger.info(
@@ -115,9 +131,37 @@ export default async function cancelShiprocketOnOrderCancel({
 
       if (cancelRes.ok) {
         logger.info(`[sr-cancel] ✅ Shiprocket order #${srOrder.id} cancelled successfully`)
+        anyCancelled = true
       } else {
         const errText = await cancelRes.text()
         logger.error(`[sr-cancel] ❌ Failed to cancel SR #${srOrder.id}: HTTP ${cancelRes.status} ${errText}`)
+      }
+    }
+
+    // Persist cancellation metadata
+    if (anyCancelled) {
+      try {
+        const walletBalanceAfter = await fetchWalletBalance(token)
+        const existingShipping = (existingMetadata.shiprocket_shipping as Record<string, unknown>) || {}
+
+        await orderModule.updateOrders(orderId, {
+          metadata: {
+            ...existingMetadata,
+            shiprocket_shipping: {
+              ...existingShipping,
+              status: "cancelled",
+              cancelled_at: new Date().toISOString(),
+              wallet_balance_after_cancellation: walletBalanceAfter,
+            },
+          },
+        })
+
+        logger.info(
+          `[sr-cancel] ✅ Order ${orderId} metadata updated: status=cancelled, wallet_after=${walletBalanceAfter}`
+        )
+      } catch (metaErr: unknown) {
+        const msg = metaErr instanceof Error ? metaErr.message : String(metaErr)
+        logger.error(`[sr-cancel] Failed to update order metadata: ${msg}`)
       }
     }
   } catch (err: unknown) {

@@ -288,7 +288,17 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
 
     try {
       const result = await adminFetch("/assign-awb", {
-        body: { shipment_id: srOrder.shipment_id, courier_id: Number(selectedCourier) },
+        body: {
+          shipment_id: srOrder.shipment_id,
+          courier_id: Number(selectedCourier),
+          medusa_order_id: data.id,
+          courier_rate: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.rate,
+          courier_name: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.courier_name,
+          freight_charge: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.freight_charge,
+          cod_charges: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.cod_charges,
+          etd: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.etd,
+          shiprocket_order_id: srOrder.order_id,
+        },
       })
 
       if (result.success) {
