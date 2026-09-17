@@ -39,6 +39,20 @@ interface ShiprocketOrderData {
   tracking_number?: string
 }
 
+interface ShipmentDetails {
+  cost: string
+  weight: number
+  volumetric_weight: number
+  dimensions: string
+  courier: string
+  courier_id: number
+  etd: string
+  cod_charges: string
+  pickup_scheduled_date: string
+  invoice_link?: string
+  freight_charge?: number
+}
+
 interface ActivityEntry {
   date: string
   activity: string
@@ -68,6 +82,7 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
   const [showActivities, setShowActivities] = useState(false)
   const [loadingActivities, setLoadingActivities] = useState(false)
   const [currentStatus, setCurrentStatus] = useState<string | null>(null)
+  const [shipmentDetails, setShipmentDetails] = useState<ShipmentDetails | null>(null)
 
   const backendUrl = (window as Record<string, unknown>).__MEDUSA_BACKEND_URL__ as string || ""
 
@@ -112,11 +127,26 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
             const shipments = Array.isArray(order.shipments) ? order.shipments : order.shipments ? [order.shipments] : []
             const shipment = shipments[0]
             setCurrentStatus(order.status || null)
+            if (shipment) {
+              setShipmentDetails({
+                cost: shipment.cost || "0.00",
+                weight: shipment.weight || 0,
+                volumetric_weight: shipment.volumetric_weight || 0,
+                dimensions: shipment.dimensions || "",
+                courier: shipment.courier || "",
+                courier_id: shipment.courier_id || 0,
+                etd: shipment.etd || "",
+                cod_charges: shipment.cod_charges || "0.00",
+                pickup_scheduled_date: shipment.pickup_scheduled_date || "",
+                invoice_link: shipment.invoice_link || undefined,
+                freight_charge: shipment.freight_charge || undefined,
+              })
+            }
             setSrOrder(prev => ({
               ...prev,
               status: order.status,
               awb_code: shipment?.awb || order.awb_code || prev?.awb_code,
-              courier_name: shipment?.courier_name || order.courier_name || prev?.courier_name,
+              courier_name: shipment?.courier || order.courier_name || prev?.courier_name,
             }))
           }
         }
@@ -124,6 +154,39 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
     } catch {}
     setIsRefreshing(false)
   }, [adminFetch, fetchWalletBalance, srOrder?.order_id])
+
+  // Fetch shipment cost details from Shiprocket
+  const fetchShipmentDetails = useCallback(async (orderId: number) => {
+    try {
+      const result = await adminFetch("/order-status", {
+        method: "POST",
+        body: { shiprocket_order_id: orderId },
+      })
+      if (result.data) {
+        const order = Array.isArray(result.data.data) ? result.data.data[0] : result.data.data
+        if (order) {
+          setCurrentStatus(order.status || null)
+          const shipments = Array.isArray(order.shipments) ? order.shipments : order.shipments ? [order.shipments] : []
+          const shipment = shipments[0]
+          if (shipment) {
+            setShipmentDetails({
+              cost: shipment.cost || "0.00",
+              weight: shipment.weight || 0,
+              volumetric_weight: shipment.volumetric_weight || 0,
+              dimensions: shipment.dimensions || "",
+              courier: shipment.courier || "",
+              courier_id: shipment.courier_id || 0,
+              etd: shipment.etd || "",
+              cod_charges: shipment.cod_charges || "0.00",
+              pickup_scheduled_date: shipment.pickup_scheduled_date || "",
+              invoice_link: shipment.invoice_link || undefined,
+              freight_charge: shipment.freight_charge || undefined,
+            })
+          }
+        }
+      }
+    } catch {}
+  }, [adminFetch])
 
   // Step 1: Check if order is fulfilled
   useEffect(() => {
@@ -141,6 +204,8 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
       if (awb) {
         setAwbInfo({ awb_code: awb, courier_name: srData.courier_name })
         setStep("assigned")
+        // Fetch shipping cost details from Shiprocket
+        if (srData.order_id) fetchShipmentDetails(srData.order_id as number)
       } else {
         setStep("checking-sr")
         loadCouriers()
@@ -502,6 +567,71 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
                   </Tooltip>
                 </div>
               </div>
+
+              {/* Shipment Cost & Details */}
+              {shipmentDetails && (
+                <div style={{
+                  background: "#F8FAFC",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "8px",
+                  padding: "14px 16px",
+                  marginBottom: "12px",
+                }}>
+                  <Text style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#475569", marginBottom: "10px", display: "block" }}>
+                    Shipment Details
+                  </Text>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px" }}>
+                    <div>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Courier</Text>
+                      <Text style={{ fontSize: "13px", fontWeight: 600 }}>{shipmentDetails.courier}</Text>
+                    </div>
+                    <div>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Shipping Cost</Text>
+                      <Text style={{ fontSize: "13px", fontWeight: 700, color: Number(shipmentDetails.cost) > 0 ? "#DC2626" : "#94A3B8" }}>
+                        {Number(shipmentDetails.cost) > 0 ? `₹${Number(shipmentDetails.cost).toFixed(2)}` : "Pending"}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Weight</Text>
+                      <Text style={{ fontSize: "13px", fontWeight: 500 }}>
+                        {shipmentDetails.weight} kg
+                        {shipmentDetails.volumetric_weight > 0 && (
+                          <span style={{ color: "#94A3B8", fontSize: "11px" }}> / Vol: {shipmentDetails.volumetric_weight} kg</span>
+                        )}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Dimensions</Text>
+                      <Text style={{ fontSize: "13px", fontWeight: 500 }}>{shipmentDetails.dimensions || "—"} cm</Text>
+                    </div>
+                    {shipmentDetails.etd && (
+                      <div>
+                        <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Est. Delivery</Text>
+                        <Text style={{ fontSize: "13px", fontWeight: 500 }}>{shipmentDetails.etd}</Text>
+                      </div>
+                    )}
+                    {Number(shipmentDetails.cod_charges) > 0 && (
+                      <div>
+                        <Text style={{ fontSize: "11px", color: "#94A3B8" }}>COD Charges</Text>
+                        <Text style={{ fontSize: "13px", fontWeight: 500 }}>₹{Number(shipmentDetails.cod_charges).toFixed(2)}</Text>
+                      </div>
+                    )}
+                    {shipmentDetails.pickup_scheduled_date && (
+                      <div>
+                        <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Pickup Date</Text>
+                        <Text style={{ fontSize: "13px", fontWeight: 500 }}>{shipmentDetails.pickup_scheduled_date}</Text>
+                      </div>
+                    )}
+                  </div>
+                  {shipmentDetails.invoice_link && (
+                    <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #E2E8F0" }}>
+                      <a href={shipmentDetails.invoice_link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                        <Button variant="secondary" size="small">📄 View Invoice</Button>
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 <Button variant="primary" onClick={() => setShowPickupForm(!showPickupForm)}>
