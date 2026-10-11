@@ -39,6 +39,20 @@ interface ShiprocketOrderData {
   tracking_number?: string
 }
 
+interface ShipmentDetails {
+  cost: string
+  weight: number
+  volumetric_weight: number
+  dimensions: string
+  courier: string
+  courier_id: number
+  etd: string
+  cod_charges: string
+  pickup_scheduled_date: string
+  invoice_link?: string
+  freight_charge?: number
+}
+
 interface ActivityEntry {
   date: string
   activity: string
@@ -56,15 +70,19 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
   const [srOrder, setSrOrder] = useState<ShiprocketOrderData | null>(null)
   const [awbInfo, setAwbInfo] = useState<{ awb_code?: string; courier_name?: string } | null>(null)
   const [pickupInfo, setPickupInfo] = useState<string | null>(null)
+  const [pickupDate, setPickupDate] = useState<string>("")
+  const [showPickupForm, setShowPickupForm] = useState(false)
 
   // Wallet
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Activity logs
   const [activities, setActivities] = useState<ActivityEntry[]>([])
   const [showActivities, setShowActivities] = useState(false)
   const [loadingActivities, setLoadingActivities] = useState(false)
   const [currentStatus, setCurrentStatus] = useState<string | null>(null)
+  const [shipmentDetails, setShipmentDetails] = useState<ShipmentDetails | null>(null)
 
   const backendUrl = (window as Record<string, unknown>).__MEDUSA_BACKEND_URL__ as string || ""
 
@@ -78,15 +96,97 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
     return res.json()
   }, [backendUrl])
 
-  // Load wallet balance
+  // Reusable wallet balance fetcher
+  const fetchWalletBalance = useCallback(async () => {
+    try {
+      const result = await adminFetch("/wallet", { method: "GET" })
+      if (result.success) setWalletBalance(Number(result.balance) || 0)
+    } catch {}
+  }, [adminFetch])
+
+  // Load wallet balance on mount
   useEffect(() => {
-    adminFetch("/wallet", { method: "GET" })
-      .then((result) => {
-        if (result.success) setWalletBalance(Number(result.balance) || 0)
+    fetchWalletBalance()
+  }, [fetchWalletBalance])
+
+  // Refresh all: wallet + order status
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    try {
+      await fetchWalletBalance()
+      // Re-fetch Shiprocket order status if we have an order_id
+      if (srOrder?.order_id) {
+        const result = await adminFetch("/order-status", {
+          method: "POST",
+          body: { shiprocket_order_id: srOrder.order_id },
+        })
+        if (result.data) {
+          const orders = Array.isArray(result.data.data) ? result.data.data : [result.data.data]
+          const order = orders[0]
+          if (order) {
+            const shipments = Array.isArray(order.shipments) ? order.shipments : order.shipments ? [order.shipments] : []
+            const shipment = shipments[0]
+            setCurrentStatus(order.status || null)
+            if (shipment) {
+              setShipmentDetails({
+                cost: shipment.cost || "0.00",
+                weight: shipment.weight || 0,
+                volumetric_weight: shipment.volumetric_weight || 0,
+                dimensions: shipment.dimensions || "",
+                courier: shipment.courier || "",
+                courier_id: shipment.courier_id || 0,
+                etd: shipment.etd || "",
+                cod_charges: shipment.cod_charges || "0.00",
+                pickup_scheduled_date: shipment.pickup_scheduled_date || "",
+                invoice_link: shipment.invoice_link || undefined,
+                freight_charge: shipment.freight_charge || undefined,
+              })
+            }
+            setSrOrder(prev => ({
+              ...prev,
+              status: order.status,
+              awb_code: shipment?.awb || order.awb_code || prev?.awb_code,
+              courier_name: shipment?.courier || order.courier_name || prev?.courier_name,
+            }))
+          }
+        }
+      }
+    } catch {}
+    setIsRefreshing(false)
+  }, [adminFetch, fetchWalletBalance, srOrder?.order_id])
+
+  // Fetch shipment cost details from Shiprocket
+  const fetchShipmentDetails = useCallback(async (orderId: number) => {
+    try {
+      const result = await adminFetch("/order-status", {
+        method: "POST",
+        body: { shiprocket_order_id: orderId },
       })
-      .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+      if (result.data) {
+        const order = Array.isArray(result.data.data) ? result.data.data[0] : result.data.data
+        if (order) {
+          setCurrentStatus(order.status || null)
+          const shipments = Array.isArray(order.shipments) ? order.shipments : order.shipments ? [order.shipments] : []
+          const shipment = shipments[0]
+          if (shipment) {
+            setShipmentDetails({
+              cost: shipment.cost || "0.00",
+              weight: shipment.weight || 0,
+              volumetric_weight: shipment.volumetric_weight || 0,
+              dimensions: shipment.dimensions || "",
+              courier: shipment.courier || "",
+              courier_id: shipment.courier_id || 0,
+              etd: shipment.etd || "",
+              cod_charges: shipment.cod_charges || "0.00",
+              pickup_scheduled_date: shipment.pickup_scheduled_date || "",
+              invoice_link: shipment.invoice_link || undefined,
+              freight_charge: shipment.freight_charge || undefined,
+            })
+          }
+        }
+      }
+    } catch {}
+  }, [adminFetch])
 
   // Step 1: Check if order is fulfilled
   useEffect(() => {
@@ -104,6 +204,8 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
       if (awb) {
         setAwbInfo({ awb_code: awb, courier_name: srData.courier_name })
         setStep("assigned")
+        // Fetch shipping cost details from Shiprocket
+        if (srData.order_id) fetchShipmentDetails(srData.order_id as number)
       } else {
         setStep("checking-sr")
         loadCouriers()
@@ -186,7 +288,17 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
 
     try {
       const result = await adminFetch("/assign-awb", {
-        body: { shipment_id: srOrder.shipment_id, courier_id: Number(selectedCourier) },
+        body: {
+          shipment_id: srOrder.shipment_id,
+          courier_id: Number(selectedCourier),
+          medusa_order_id: data.id,
+          courier_rate: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.rate,
+          courier_name: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.courier_name,
+          freight_charge: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.freight_charge,
+          cod_charges: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.cod_charges,
+          etd: couriers.find(c => String(c.courier_company_id) === selectedCourier)?.etd,
+          shiprocket_order_id: srOrder.order_id,
+        },
       })
 
       if (result.success) {
@@ -203,17 +315,28 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
   }
 
   const handleSchedulePickup = async () => {
-    if (!srOrder?.shipment_id) return
+    if (!srOrder?.shipment_id) {
+      setError(`Cannot schedule pickup: no shipment_id found (order_id: ${srOrder?.order_id})`)
+      setStep("error")
+      return
+    }
     setStep("scheduling-pickup")
+    setShowPickupForm(false)
 
     try {
-      const result = await adminFetch("/pickup", {
-        body: { shipment_id: srOrder.shipment_id },
-      })
+      const body: Record<string, unknown> = { shipment_id: srOrder.shipment_id }
+      if (pickupDate) {
+        body.pickup_date = pickupDate
+      }
+
+      const result = await adminFetch("/pickup", { body })
 
       if (result.success) {
-        setPickupInfo(result.pickup_scheduled_date || "Scheduled")
+        setPickupInfo(result.pickup_scheduled_date || pickupDate || "Scheduled")
         setStep("pickup-done")
+      } else if (result.error) {
+        setError(`Pickup failed: ${result.error}`)
+        setStep("error")
       } else {
         setPickupInfo(result.message || "Pickup request submitted")
         setStep("pickup-done")
@@ -255,6 +378,7 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
 
   return (
     <Container className="p-0">
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={{ border: "2px solid #e4e4e7", borderRadius: "8px", overflow: "hidden" }}>
         {/* Header */}
         <div style={{
@@ -269,6 +393,45 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
               </Heading>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                title="Refresh status & wallet"
+                style={{
+                  background: "rgba(255,255,255,0.15)",
+                  border: "1px solid rgba(255,255,255,0.25)",
+                  borderRadius: "6px",
+                  padding: "6px 12px",
+                  cursor: isRefreshing ? "wait" : "pointer",
+                  color: "white",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.2s ease",
+                  opacity: isRefreshing ? 0.7 : 1,
+                  letterSpacing: "0.02em",
+                }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{
+                    animation: isRefreshing ? "spin 0.8s linear infinite" : "none",
+                  }}
+                >
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                </svg>
+                {isRefreshing ? "Refreshing" : "Refresh"}
+              </button>
               {srOrder?.order_id && (
                 <Badge color="purple" size="small">
                   SR #{srOrder.order_id}
@@ -415,12 +578,166 @@ const ShiprocketWidget = ({ data }: { data: OrderData }) => {
                 </div>
               </div>
 
+              {/* Shipment Cost & Details */}
+              {shipmentDetails && (
+                <div style={{
+                  background: "#F8FAFC",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "8px",
+                  padding: "14px 16px",
+                  marginBottom: "12px",
+                }}>
+                  <Text style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#475569", marginBottom: "10px", display: "block" }}>
+                    Shipment Details
+                  </Text>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px" }}>
+                    <div>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Courier</Text>
+                      <Text style={{ fontSize: "13px", fontWeight: 600 }}>{shipmentDetails.courier}</Text>
+                    </div>
+                    <div>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Shipping Cost</Text>
+                      <Text style={{ fontSize: "13px", fontWeight: 700, color: Number(shipmentDetails.cost) > 0 ? "#DC2626" : "#94A3B8" }}>
+                        {Number(shipmentDetails.cost) > 0 ? `₹${Number(shipmentDetails.cost).toFixed(2)}` : "Pending"}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Weight</Text>
+                      <Text style={{ fontSize: "13px", fontWeight: 500 }}>
+                        {shipmentDetails.weight} kg
+                        {shipmentDetails.volumetric_weight > 0 && (
+                          <span style={{ color: "#94A3B8", fontSize: "11px" }}> / Vol: {shipmentDetails.volumetric_weight} kg</span>
+                        )}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Dimensions</Text>
+                      <Text style={{ fontSize: "13px", fontWeight: 500 }}>{shipmentDetails.dimensions || "—"} cm</Text>
+                    </div>
+                    {shipmentDetails.etd && (
+                      <div>
+                        <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Est. Delivery</Text>
+                        <Text style={{ fontSize: "13px", fontWeight: 500 }}>{shipmentDetails.etd}</Text>
+                      </div>
+                    )}
+                    {Number(shipmentDetails.cod_charges) > 0 && (
+                      <div>
+                        <Text style={{ fontSize: "11px", color: "#94A3B8" }}>COD Charges</Text>
+                        <Text style={{ fontSize: "13px", fontWeight: 500 }}>₹{Number(shipmentDetails.cod_charges).toFixed(2)}</Text>
+                      </div>
+                    )}
+                    {shipmentDetails.pickup_scheduled_date && (
+                      <div>
+                        <Text style={{ fontSize: "11px", color: "#94A3B8" }}>Pickup Date</Text>
+                        <Text style={{ fontSize: "13px", fontWeight: 500 }}>{shipmentDetails.pickup_scheduled_date}</Text>
+                      </div>
+                    )}
+                  </div>
+                  {shipmentDetails.invoice_link && (
+                    <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #E2E8F0" }}>
+                      <a href={shipmentDetails.invoice_link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                        <Button variant="secondary" size="small">📄 View Invoice</Button>
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                <Button variant="primary" onClick={handleSchedulePickup}>📦 Schedule Pickup</Button>
+                <Button variant="primary" onClick={() => setShowPickupForm(!showPickupForm)}>
+                  📦 {showPickupForm ? "Cancel" : "Schedule Pickup"}
+                </Button>
                 <Button variant="secondary" onClick={loadActivities} disabled={loadingActivities}>
                   {loadingActivities ? "⏳ Loading..." : showActivities ? "🔽 Hide Activity" : "📋 Show Activity Log"}
                 </Button>
               </div>
+
+              {/* Pickup Slot Picker */}
+              {showPickupForm && (() => {
+                const slots: Array<{ date: string; label: string; dayName: string; isToday: boolean }> = []
+                const now = new Date()
+                const istOffset = 5.5 * 60 * 60 * 1000
+                const istNow = new Date(now.getTime() + istOffset)
+                const istHour = istNow.getUTCHours()
+
+                let daysAdded = 0
+                let offset = istHour >= 14 ? 1 : 0
+
+                while (daysAdded < 5) {
+                  const d = new Date(istNow)
+                  d.setUTCDate(d.getUTCDate() + offset)
+                  const dayOfWeek = d.getUTCDay()
+                  if (dayOfWeek !== 0) {
+                    const yyyy = d.getUTCFullYear()
+                    const mm = String(d.getUTCMonth() + 1).padStart(2, "0")
+                    const dd = String(d.getUTCDate()).padStart(2, "0")
+                    const dateStr = `${yyyy}-${mm}-${dd}`
+                    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                    slots.push({
+                      date: dateStr,
+                      label: `${d.getUTCDate()} ${monthNames[d.getUTCMonth()]}`,
+                      dayName: dayNames[dayOfWeek],
+                      isToday: offset === 0,
+                    })
+                    daysAdded++
+                  }
+                  offset++
+                }
+
+                return (
+                  <div style={{
+                    marginTop: "12px",
+                    padding: "16px",
+                    background: "#F8FAFC",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "8px",
+                  }}>
+                    <Text style={{ fontSize: "11px", fontWeight: 700, marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#475569", display: "block" }}>
+                      Select Pickup Date
+                    </Text>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                      {slots.map((slot) => (
+                        <button
+                          key={slot.date}
+                          onClick={() => setPickupDate(slot.date)}
+                          style={{
+                            flex: "1 1 0",
+                            minWidth: "72px",
+                            padding: "10px 6px",
+                            border: pickupDate === slot.date ? "2px solid #7C3AED" : "1px solid #CBD5E1",
+                            borderRadius: "8px",
+                            background: pickupDate === slot.date ? "#EDE9FE" : "white",
+                            cursor: "pointer",
+                            textAlign: "center",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <div style={{ fontSize: "10px", fontWeight: 600, color: pickupDate === slot.date ? "#7C3AED" : "#94A3B8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            {slot.isToday ? "Today" : slot.dayName}
+                          </div>
+                          <div style={{ fontSize: "15px", fontWeight: 700, color: pickupDate === slot.date ? "#5B21B6" : "#1E293B", marginTop: "2px" }}>
+                            {slot.label}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: "12px", display: "flex", gap: "8px", alignItems: "center" }}>
+                      <Button
+                        variant="primary"
+                        onClick={handleSchedulePickup}
+                        disabled={!pickupDate}
+                        size="small"
+                      >
+                        Confirm Pickup {pickupDate ? `— ${pickupDate}` : ""}
+                      </Button>
+                      <Text style={{ fontSize: "11px", color: "#94A3B8" }}>
+                        Courier will assign a time slot automatically
+                      </Text>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           )}
 

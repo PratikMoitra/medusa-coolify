@@ -9,7 +9,7 @@ patchedDependencies:
     hash: 3c4580f4f6b079c18744299ee64031a0e31e5efcdf0d978a672b1b5017bfc18b
     path: patches/@alchemilla__medusa-razorpay@0.1.0.patch
   '@sam-ael/medusa-plugin-shiprocket@0.2.1':
-    hash: a6309bfab5ba7a96aa8d0cdea61dce797bb9161d038a55fa03bfef90b3eded24
+    hash: 169f7db4a0e719eca8e4d4d85e9f02ad966da939791ab9c1569a14dc5e618f95
     path: patches/@sam-ael__medusa-plugin-shiprocket@0.2.1.patch
 
 importers:
@@ -54,7 +54,7 @@ importers:
         version: 4.2.4(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@sam-ael/medusa-plugin-shiprocket':
         specifier: ^0.2.1
-        version: 0.2.1(patch_hash=a6309bfab5ba7a96aa8d0cdea61dce797bb9161d038a55fa03bfef90b3eded24)(@medusajs/framework@2.21.0(@medusajs/cli@2.21.0(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@7.3.6(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.1))(zod@4.2.0))(@medusajs/medusa@2.21.0)
+        version: 0.2.1(patch_hash=169f7db4a0e719eca8e4d4d85e9f02ad966da939791ab9c1569a14dc5e618f95)(@medusajs/framework@2.21.0(@medusajs/cli@2.21.0(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@7.3.6(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.1))(zod@4.2.0))(@medusajs/medusa@2.21.0)
       '@tanstack/react-query':
         specifier: 5.64.2
         version: 5.64.2(react@18.3.1)
@@ -9521,7 +9521,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
 
-  '@sam-ael/medusa-plugin-shiprocket@0.2.1(patch_hash=a6309bfab5ba7a96aa8d0cdea61dce797bb9161d038a55fa03bfef90b3eded24)(@medusajs/framework@2.21.0(@medusajs/cli@2.21.0(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@7.3.6(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.1))(zod@4.2.0))(@medusajs/medusa@2.21.0)':
+  '@sam-ael/medusa-plugin-shiprocket@0.2.1(patch_hash=169f7db4a0e719eca8e4d4d85e9f02ad966da939791ab9c1569a14dc5e618f95)(@medusajs/framework@2.21.0(@medusajs/cli@2.21.0(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@7.3.6(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.1))(zod@4.2.0))(@medusajs/medusa@2.21.0)':
     dependencies:
       '@medusajs/framework': 2.21.0(@medusajs/cli@2.21.0(@types/node@20.19.43))(@types/node@20.19.43)(ioredis@5.11.1)(vite@7.3.6(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.1))(zod@4.2.0)
       '@medusajs/medusa': 2.21.0(8e31c9b8941d9eea28470c662b373411)

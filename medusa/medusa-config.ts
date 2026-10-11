@@ -155,6 +155,25 @@ module.exports = defineConfig({
         ],
       },
     }] : []),
+    // Facebook/Instagram OAuth auth provider (custom, for storefront customer login)
+    // Instagram Login uses the same Meta OAuth infrastructure, so this single provider
+    // handles both Facebook and Instagram social login.
+    ...(process.env.FACEBOOK_CLIENT_ID ? [{
+      resolve: "@medusajs/medusa/auth",
+      options: {
+        providers: [
+          {
+            resolve: "./src/modules/auth-facebook",
+            id: "facebook",
+            options: {
+              clientID: process.env.FACEBOOK_CLIENT_ID,
+              clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+              callbackURL: process.env.FACEBOOK_CALLBACK_URL || `${process.env.BACKEND_URL}/auth/customer/facebook/callback`,
+            },
+          },
+        ],
+      },
+    }] : []),
   ],
 
   // Plugins (admin UI extensions + webhook routes)

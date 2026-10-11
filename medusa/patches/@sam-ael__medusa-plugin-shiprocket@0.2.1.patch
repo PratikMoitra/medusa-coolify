@@ -1,3 +1,16 @@
+diff --git a/.medusa/server/src/providers/shiprocket/client/index.js b/.medusa/server/src/providers/shiprocket/client/index.js
+index 1cd423c571107e7bfb6cfd1df8ba87b52bda40da..e9e1f777d1dfdb290a59629f34cf9d29318db45f 100644
+--- a/.medusa/server/src/providers/shiprocket/client/index.js
++++ b/.medusa/server/src/providers/shiprocket/client/index.js
+@@ -181,7 +181,7 @@ class ShiprocketClient {
+                 shipping.postal_code === billing.postal_code);
+             // Build order payload
+             const orderData = {
+-                order_id: `${order.id}-${Math.floor(Date.now() / 1000)}`,
++                order_id: `CS-${order.display_id || order.id}-${Math.floor(Date.now() / 1000)}`,
+                 order_date: orderDate,
+                 pickup_location: this.pickup_location || "Primary",
+                 billing_customer_name: (0, validation_1.requireField)(billing.first_name || shipping.first_name, "Billing First Name"),
 diff --git a/.medusa/server/src/providers/shiprocket/utils/validation.js b/.medusa/server/src/providers/shiprocket/utils/validation.js
 index d0c9d5896789dc6db85a07da06b16e1e2999f949..428f8a2d67cf10e1ca0b0019a18c2461818476a1 100644
 --- a/.medusa/server/src/providers/shiprocket/utils/validation.js
