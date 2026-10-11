@@ -71,7 +71,7 @@ export default async function cancelShiprocketOnOrderCancel({
 
     try {
       const order = await orderModule.retrieveOrder(orderId)
-      const orderAny = order as Record<string, unknown>
+      const orderAny = order as unknown as Record<string, unknown>
       displayId = orderAny.display_id as string | number | undefined
       existingMetadata = (orderAny.metadata as Record<string, unknown>) || {}
     } catch {
