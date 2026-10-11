@@ -138,6 +138,18 @@ module.exports = defineConfig({
         ],
       },
     }] : []),
+    // Email/password auth provider (for admin login)
+    {
+      resolve: "@medusajs/medusa/auth",
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/medusa/auth-emailpass",
+            id: "emailpass",
+          },
+        ],
+      },
+    },
     // Google OAuth auth provider (for storefront customer login)
     ...(process.env.GOOGLE_CLIENT_ID ? [{
       resolve: "@medusajs/medusa/auth",
