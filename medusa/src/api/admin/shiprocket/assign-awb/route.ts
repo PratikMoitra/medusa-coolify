@@ -80,7 +80,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
           const orderModule = req.scope.resolve(Modules.ORDER)
           const order = await orderModule.retrieveOrder(medusa_order_id)
-          const existingMetadata = (order as Record<string, unknown>).metadata as Record<string, unknown> || {}
+          const existingMetadata = (order as unknown as Record<string, unknown>).metadata as Record<string, unknown> || {}
 
           const shippingMeta = {
             awb_code: awbCode,

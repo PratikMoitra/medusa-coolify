@@ -56,7 +56,7 @@ class FacebookAuthService extends AbstractAuthModuleProvider {
     this.logger_ = logger
   }
 
-  async register(_: any) {
+  async register(_: any): Promise<{ success: boolean; error: string }> {
     throw new MedusaError(
       MedusaError.Types.NOT_ALLOWED,
       "Facebook does not support registration. Use method `authenticate` instead."
