@@ -34,7 +34,9 @@ module.exports = defineConfig({
 
   admin: {
     disable: process.env.DISABLE_ADMIN === "true" || process.env.MEDUSA_WORKER_MODE === "worker",
-    backendUrl: process.env.BACKEND_URL || process.env.MEDUSA_BACKEND_URL,
+    backendUrl: process.env.COOLIFY_FQDN
+      ? `https://${process.env.COOLIFY_FQDN}`
+      : process.env.BACKEND_URL || process.env.MEDUSA_BACKEND_URL,
   },
 
   modules: [
