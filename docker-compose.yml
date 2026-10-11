@@ -88,6 +88,7 @@ services:
       - KALAKAVYA_STOREFRONT_URL=${KALAKAVYA_STOREFRONT_URL:-}
     networks:
       - medusa_network
+      - chamkiley_network
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.medusa-server.rule=Host(`${COOLIFY_FQDN:-localhost}`)"
@@ -160,3 +161,5 @@ volumes:
 networks:
   medusa_network:
     driver: bridge
+  chamkiley_network:
+    external: true
