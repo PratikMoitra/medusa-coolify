@@ -20,6 +20,10 @@ module.exports = defineConfig({
       authCors: process.env.AUTH_CORS!,
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
+      authMethodsPerActor: {
+        user: ["emailpass"],
+        customer: ["emailpass", "google", "facebook"],
+      },
     },
     // Disable SSL for Docker internal postgres (Coolify internal network)
     // ssl:false at the top level is the correct Medusa v2 databaseDriverOptions format
