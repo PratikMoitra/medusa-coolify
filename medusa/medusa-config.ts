@@ -138,24 +138,18 @@ module.exports = defineConfig({
         ],
       },
     }] : []),
-    // Email/password auth provider (for admin login)
+    // Auth module — all providers must be in a single entry
     {
       resolve: "@medusajs/medusa/auth",
       options: {
         providers: [
+          // Email/password (admin dashboard login)
           {
             resolve: "@medusajs/medusa/auth-emailpass",
             id: "emailpass",
           },
-        ],
-      },
-    },
-    // Google OAuth auth provider (for storefront customer login)
-    ...(process.env.GOOGLE_CLIENT_ID ? [{
-      resolve: "@medusajs/medusa/auth",
-      options: {
-        providers: [
-          {
+          // Google OAuth (storefront customer login) — only if configured
+          ...(process.env.GOOGLE_CLIENT_ID ? [{
             resolve: "@medusajs/auth-google",
             id: "google",
             options: {
@@ -163,18 +157,9 @@ module.exports = defineConfig({
               clientSecret: process.env.GOOGLE_CLIENT_SECRET,
               callbackURL: process.env.GOOGLE_CALLBACK_URL || `${process.env.BACKEND_URL}/auth/customer/google/callback`,
             },
-          },
-        ],
-      },
-    }] : []),
-    // Facebook/Instagram OAuth auth provider (custom, for storefront customer login)
-    // Instagram Login uses the same Meta OAuth infrastructure, so this single provider
-    // handles both Facebook and Instagram social login.
-    ...(process.env.FACEBOOK_CLIENT_ID ? [{
-      resolve: "@medusajs/medusa/auth",
-      options: {
-        providers: [
-          {
+          }] : []),
+          // Facebook/Instagram OAuth (storefront customer login) — only if configured
+          ...(process.env.FACEBOOK_CLIENT_ID ? [{
             resolve: "./src/modules/auth-facebook",
             id: "facebook",
             options: {
@@ -182,10 +167,10 @@ module.exports = defineConfig({
               clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
               callbackURL: process.env.FACEBOOK_CALLBACK_URL || `${process.env.BACKEND_URL}/auth/customer/facebook/callback`,
             },
-          },
+          }] : []),
         ],
       },
-    }] : []),
+    },
   ],
 
   // Plugins (admin UI extensions + webhook routes)
