@@ -200,6 +200,9 @@ export default async function emailNotifications({
         logger.info(`[ses-notification] Order total: raw=${order.total}, summary=${(order as any)?.summary?.current_order_total}, computed=${computedTotal}, using=${orderTotal}`)
 
         const { storeName, storeUrl } = await resolveStoreName(container, data.id)
+
+        const orderMetadata = (order as any).metadata || {}
+
         const email = orderConfirmationEmail({
           order_id: order.id,
           display_id: order.display_id,
@@ -219,6 +222,9 @@ export default async function emailNotifications({
           payment_method: paymentMethod,
           payment_id: paymentId,
           payment_status: paymentStatus,
+          buyer_ip: orderMetadata.buyer_ip || undefined,
+          buyer_user_agent: orderMetadata.buyer_user_agent || undefined,
+          buyer_purchase_timestamp: orderMetadata.buyer_purchase_timestamp_ist || undefined,
         })
 
         await ses.sendEmail({

@@ -48,6 +48,9 @@ interface OrderData {
   payment_method?: string
   payment_id?: string
   payment_status?: string
+  buyer_ip?: string
+  buyer_user_agent?: string
+  buyer_purchase_timestamp?: string
 }
 
 interface CustomerData {
@@ -431,6 +434,33 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
                 <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">Amount Paid:</td>
                 <td style="padding:2px 0;font-weight:700;color:#333;font-size:14px;">${formatCurrency(orderTotal, data.currency_code)}</td>
               </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+    ` : ""}
+
+    <!-- Buyer Footprint -->
+    ${data.buyer_ip || data.buyer_purchase_timestamp ? `
+    <div style="padding:0 32px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:12px 16px;">
+        <tr>
+          <td style="padding:8px 16px;">
+            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#333;text-transform:uppercase;letter-spacing:0.5px;">Transaction Footprint</p>
+            <table cellpadding="0" cellspacing="0">
+              ${data.buyer_purchase_timestamp ? `<tr>
+                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">Timestamp (IST):</td>
+                <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;font-family:monospace;">${data.buyer_purchase_timestamp}</td>
+              </tr>` : ""}
+              ${data.buyer_ip ? `<tr>
+                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">IP Address:</td>
+                <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;font-family:monospace;">${data.buyer_ip}</td>
+              </tr>` : ""}
+              ${data.buyer_user_agent ? `<tr>
+                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">Device:</td>
+                <td style="padding:2px 0;font-weight:400;color:#555;font-size:11px;word-break:break-all;max-width:400px;">${data.buyer_user_agent.length > 120 ? data.buyer_user_agent.substring(0, 120) + '...' : data.buyer_user_agent}</td>
+              </tr>` : ""}
             </table>
           </td>
         </tr>
