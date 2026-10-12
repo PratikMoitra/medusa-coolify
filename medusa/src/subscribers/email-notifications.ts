@@ -199,9 +199,27 @@ export default async function emailNotifications({
 
         logger.info(`[ses-notification] Order total: raw=${order.total}, summary=${(order as any)?.summary?.current_order_total}, computed=${computedTotal}, using=${orderTotal}`)
 
+        // Wait for invoice-number subscriber to store invoice_number in metadata
+        // Both subscribers fire on order.placed — small delay avoids race condition
+        await new Promise(resolve => setTimeout(resolve, 3000))
+
         const { storeName, storeUrl } = await resolveStoreName(container, data.id)
 
-        const orderMetadata = (order as any).metadata || {}
+        // Re-read metadata with fresh data (invoice_number should be set now)
+        const metaQuery = container.resolve("query" as any)
+        let orderMetadata = (order as any).metadata || {}
+        try {
+          const { data: freshOrders } = await metaQuery.graph({
+            entity: "order",
+            fields: ["id", "metadata"],
+            filters: { id: data.id },
+          })
+          if (freshOrders?.[0]?.metadata) {
+            orderMetadata = freshOrders[0].metadata
+          }
+        } catch {
+          logger.warn(`[ses-notification] Could not re-fetch metadata for invoice_number`)
+        }
 
         // For test orders: override totals to show actual ₹1 paid amount
         const isTestOrder = orderMetadata.test_mode === true || orderMetadata.test_mode === "true"
