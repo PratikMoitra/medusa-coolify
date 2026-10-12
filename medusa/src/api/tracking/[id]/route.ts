@@ -114,6 +114,21 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     res.setHeader("Cache-Control", "private, no-store")
     res.setHeader("X-Robots-Tag", "noindex")
 
+    const isTestOrder = metadata.test_mode === true || metadata.test_mode === "true"
+
+    // For test orders: use stored paid amount, or calculate ₹1 per item quantity
+    let testPaidAmount: number | null = null
+    if (isTestOrder) {
+      if (typeof metadata.test_paid_amount_inr === "number") {
+        testPaidAmount = metadata.test_paid_amount_inr
+      } else {
+        const totalQty = (order.items || []).reduce(
+          (sum: number, item: any) => sum + (item.quantity || 1), 0
+        )
+        testPaidAmount = totalQty * 1 // ₹1 per item
+      }
+    }
+
     return res.json({
       order: {
         id: order.id,
@@ -121,17 +136,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         status: order.status,
         created_at: order.created_at,
         currency_code: order.currency_code,
-        total: order.total,
-        subtotal: order.subtotal,
-        shipping_total: order.shipping_total,
-        tax_total: order.tax_total,
-        discount_total: order.discount_total,
+        total: isTestOrder ? testPaidAmount : order.total,
+        subtotal: isTestOrder ? testPaidAmount : order.subtotal,
+        shipping_total: isTestOrder ? 0 : order.shipping_total,
+        tax_total: isTestOrder ? 0 : order.tax_total,
+        discount_total: isTestOrder ? 0 : order.discount_total,
+        original_subtotal: isTestOrder ? order.subtotal : undefined,
         items,
         shipping_address: shippingAddress,
-        is_test_order: metadata.test_mode === true || metadata.test_mode === "true",
-        actual_paid_amount: metadata.test_mode
-          ? (payment?.amount ?? null)
-          : null,
+        is_test_order: isTestOrder,
+        actual_paid_amount: testPaidAmount,
       },
       payment,
       tracking,

@@ -51,6 +51,8 @@ interface OrderData {
   buyer_ip?: string
   buyer_user_agent?: string
   buyer_purchase_timestamp?: string
+  invoice_number?: string
+  is_test_order?: boolean
 }
 
 interface CustomerData {
@@ -244,7 +246,7 @@ function baseLayout(storeName: string, content: string): string {
 export function orderConfirmationEmail(data: OrderData): { subject: string; html: string } {
   const brand = getBrand(data.storeName)
   const name = data.customer_name || data.shipping_address?.first_name || "there"
-  const invoiceNumber = generateInvoiceNumber(data.display_id, data.storeName, data.created_at)
+  const invoiceNumber = data.invoice_number || generateInvoiceNumber(data.display_id, data.storeName, data.created_at)
   const invoiceDate = formatDate(data.created_at)
   const orderDate = formatDate(data.created_at)
 
@@ -252,9 +254,10 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
   const shippingTotal = data.shipping_total ?? 0
   const discountTotal = data.discount_total ?? 0
   const orderTotal = data.total
-  // GST is inclusive — back-calculate from the total using env-configured rate
+  const isTestOrder = data.is_test_order === true
+  // GST is inclusive — back-calculate from the total using env-configured rate (skip for test orders)
   const gstRate = Number(process.env.GST_RATE || 5)
-  const taxTotal = Math.round(orderTotal * gstRate / (100 + gstRate))
+  const taxTotal = isTestOrder ? 0 : Math.round(orderTotal * gstRate / (100 + gstRate))
 
   const companyAddressHtml = brand.companyAddress.split("\n").join("<br>")
 
@@ -345,6 +348,19 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
           </td>
         </tr>
       </table>
+
+      ${isTestOrder ? `
+      <!-- Test Order Banner -->
+      <div style="padding:0 0 16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#FFF3CD;border:1px solid #FFD700;border-radius:8px;padding:12px 16px;">
+          <tr>
+            <td style="padding:8px 16px;color:#856404;font-size:13px;font-weight:600;">
+              ⚠️ TEST ORDER — This is a test order placed for verification purposes only. No physical product will be shipped.
+            </td>
+          </tr>
+        </table>
+      </div>
+      ` : ""}
 
       <!-- Items Table -->
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:0;">

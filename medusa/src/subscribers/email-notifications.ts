@@ -203,15 +203,44 @@ export default async function emailNotifications({
 
         const orderMetadata = (order as any).metadata || {}
 
+        // For test orders: override totals to show actual ₹1 paid amount
+        const isTestOrder = orderMetadata.test_mode === true || orderMetadata.test_mode === "true"
+        let emailTotal = orderTotal
+        let emailSubtotal = Number(order.subtotal) || undefined
+        let emailShippingTotal = Number((order as any).shipping_total) || 0
+        let emailDiscountTotal = Number((order as any).discount_total) || 0
+        let emailTaxTotal = Number((order as any).tax_total) || 0
+        let emailItems = items
+
+        if (isTestOrder) {
+          const totalQty = items.reduce((sum: number, item: any) => sum + item.quantity, 0)
+          const testPaidAmount = typeof orderMetadata.test_paid_amount_inr === "number"
+            ? orderMetadata.test_paid_amount_inr
+            : totalQty * 1
+          emailTotal = testPaidAmount
+          emailSubtotal = testPaidAmount
+          emailShippingTotal = 0
+          emailDiscountTotal = 0
+          emailTaxTotal = 0
+          emailItems = items.map((item: any) => ({
+            ...item,
+            unit_price: 1, // ₹1 per item
+          }))
+
+          // Override payment details for test orders
+          paymentMethod = "Test Payment (Razorpay)"
+          paymentStatus = "Paid"
+        }
+
         const email = orderConfirmationEmail({
           order_id: order.id,
           display_id: order.display_id,
-          items,
-          total: orderTotal,
-          subtotal: Number(order.subtotal) || undefined,
-          shipping_total: Number((order as any).shipping_total) || 0,
-          discount_total: Number((order as any).discount_total) || 0,
-          tax_total: Number((order as any).tax_total) || 0,
+          items: emailItems,
+          total: emailTotal,
+          subtotal: emailSubtotal,
+          shipping_total: emailShippingTotal,
+          discount_total: emailDiscountTotal,
+          tax_total: emailTaxTotal,
           currency_code: order.currency_code,
           customer_email: order.email,
           customer_name: order.shipping_address?.first_name,
@@ -225,6 +254,8 @@ export default async function emailNotifications({
           buyer_ip: orderMetadata.buyer_ip || undefined,
           buyer_user_agent: orderMetadata.buyer_user_agent || undefined,
           buyer_purchase_timestamp: orderMetadata.buyer_purchase_timestamp_ist || undefined,
+          invoice_number: orderMetadata.invoice_number || undefined,
+          is_test_order: isTestOrder,
         })
 
         await ses.sendEmail({
