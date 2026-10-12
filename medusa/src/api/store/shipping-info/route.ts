@@ -250,7 +250,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       label:
         tier.shipping_cost === 0
           ? "Free Shipping"
-          : `₹${tier.shipping_cost} shipping`,
+          : `₹${tier.shipping_cost / 100} shipping`,
     }))
 
     // Determine highest threshold (free shipping target)
