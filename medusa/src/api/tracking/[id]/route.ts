@@ -128,6 +128,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         discount_total: order.discount_total,
         items,
         shipping_address: shippingAddress,
+        is_test_order: metadata.test_mode === true || metadata.test_mode === "true",
+        actual_paid_amount: metadata.test_mode
+          ? (payment?.amount ?? null)
+          : null,
       },
       payment,
       tracking,

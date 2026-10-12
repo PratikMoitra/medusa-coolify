@@ -334,10 +334,6 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
                 <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;">${invoiceDate}</td>
               </tr>
               <tr>
-                <td style="padding:2px 12px 2px 0;color:#777;font-size:12px;">Order Number:</td>
-                <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;">${data.display_id}</td>
-              </tr>
-              <tr>
                 <td style="padding:2px 12px 2px 0;color:#777;font-size:12px;">Order Date:</td>
                 <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;">${orderDate}</td>
               </tr>
@@ -441,30 +437,12 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
     </div>
     ` : ""}
 
-    <!-- Buyer Footprint -->
+    <!-- Buyer Footprint (subtle footer-style fine print) -->
     ${data.buyer_ip || data.buyer_purchase_timestamp ? `
-    <div style="padding:0 32px 16px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:12px 16px;">
-        <tr>
-          <td style="padding:8px 16px;">
-            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#333;text-transform:uppercase;letter-spacing:0.5px;">Transaction Footprint</p>
-            <table cellpadding="0" cellspacing="0">
-              ${data.buyer_purchase_timestamp ? `<tr>
-                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">Timestamp (IST):</td>
-                <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;font-family:monospace;">${data.buyer_purchase_timestamp}</td>
-              </tr>` : ""}
-              ${data.buyer_ip ? `<tr>
-                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">IP Address:</td>
-                <td style="padding:2px 0;font-weight:600;color:#333;font-size:12px;font-family:monospace;">${data.buyer_ip}</td>
-              </tr>` : ""}
-              ${data.buyer_user_agent ? `<tr>
-                <td style="padding:2px 16px 2px 0;color:#777;font-size:12px;">Device:</td>
-                <td style="padding:2px 0;font-weight:400;color:#555;font-size:11px;word-break:break-all;max-width:400px;">${data.buyer_user_agent.length > 120 ? data.buyer_user_agent.substring(0, 120) + '...' : data.buyer_user_agent}</td>
-              </tr>` : ""}
-            </table>
-          </td>
-        </tr>
-      </table>
+    <div style="padding:8px 32px 4px;">
+      <p style="margin:0;color:#bbb;font-size:9px;line-height:1.5;text-align:center;">
+        Transaction ref: ${data.buyer_purchase_timestamp ? `${data.buyer_purchase_timestamp}` : ""}${data.buyer_ip ? ` · ${data.buyer_ip}` : ""}${data.buyer_user_agent ? ` · ${data.buyer_user_agent.substring(0, 60)}` : ""}
+      </p>
     </div>
     ` : ""}
 
