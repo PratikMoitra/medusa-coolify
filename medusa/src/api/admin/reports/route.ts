@@ -767,7 +767,7 @@ const CSV_CONFIG: Record<string, { headers: string[]; dataKey: string }> = {
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
-    const url = new URL(req.url || "", `http://${req.headers.get?.("host") || "localhost"}`)
+    const url = new URL(req.url || "", `http://${req.headers["host"] || "localhost"}`)
     const reportType = url.searchParams.get("type")
     const period = url.searchParams.get("period") || "monthly"
     const from = url.searchParams.get("from") || undefined
