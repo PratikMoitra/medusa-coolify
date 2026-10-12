@@ -15,7 +15,10 @@ import { Modules } from "@medusajs/framework/utils"
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const cartId = req.params.id
-  const { test_code } = req.body as { test_code?: string }
+  const { test_code, customer_email } = req.body as {
+    test_code?: string
+    customer_email?: string
+  }
 
   if (!cartId) {
     return res.status(400).json({ error: "Cart ID is required" })
@@ -25,6 +28,24 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const validCode = process.env.TEST_SHOP_PIN || process.env.NEXT_PUBLIC_TEST_SHOP_PIN
   if (!validCode || test_code !== validCode) {
     return res.status(403).json({ error: "Invalid test code" })
+  }
+
+  // Validate the customer email against whitelisted emails
+  const whitelistedEmails = (
+    process.env.TEST_SHOP_ADMIN_EMAILS ||
+    process.env.NEXT_PUBLIC_TEST_SHOP_ADMIN_EMAILS ||
+    ""
+  )
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+
+  const normalizedEmail = (customer_email || "").trim().toLowerCase()
+
+  if (whitelistedEmails.length > 0 && !whitelistedEmails.includes(normalizedEmail)) {
+    return res
+      .status(403)
+      .json({ error: "This test code is not available for your account" })
   }
 
   const logger = req.scope.resolve("logger")
