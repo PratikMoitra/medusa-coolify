@@ -85,4 +85,16 @@ fi
 
 echo "=== Starting: npx medusa start (mode: ${MEDUSA_WORKER_MODE:-shared}) ==="
 echo "========================================"
+
+# Run stock-level fixer in background after server is up
+# This ensures WooCommerce-synced products have inventory levels
+if [ -f /app/scripts/ensure-stock-levels.js ] && [ "${MEDUSA_WORKER_MODE}" != "worker" ]; then
+  (
+    sleep 15  # Wait for server to be ready
+    echo "=== Running ensure-stock-levels (background) ==="
+    node /app/scripts/ensure-stock-levels.js
+    echo "=== ensure-stock-levels complete ==="
+  ) &
+fi
+
 exec npx medusa start

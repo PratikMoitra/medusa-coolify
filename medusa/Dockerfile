@@ -45,6 +45,9 @@ COPY --from=builder /app/package.json ./
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
+# Copy runtime scripts (ensure-stock-levels, etc.)
+COPY scripts/ /app/scripts/
+
 # Switch to the server directory
 WORKDIR /app/.medusa/server
 
