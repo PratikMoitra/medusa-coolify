@@ -499,7 +499,7 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
     </p>`
 
   return {
-    subject: `All set! ChamkileyStore order is confirmed. Invoice #${data.display_id}`,
+    subject: `All set! ChamkileyStore order is confirmed. Invoice ${invoiceNumber}`,
     html: baseLayout(data.storeName, content),
   }
 }
