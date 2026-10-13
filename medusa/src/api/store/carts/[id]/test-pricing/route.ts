@@ -25,13 +25,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   // Validate the test code against env
-  const validCode = process.env.TEST_SHOP_PIN || process.env.NEXT_PUBLIC_TEST_SHOP_PIN
-  if (!validCode || test_code !== validCode) {
+  const validCode = process.env.TEST_MODE_CODE || process.env.TEST_SHOP_PIN || process.env.NEXT_PUBLIC_TEST_SHOP_PIN
+  if (!validCode || test_code?.toUpperCase() !== validCode.toUpperCase()) {
     return res.status(403).json({ error: "Invalid test code" })
   }
 
   // Validate the customer email against whitelisted emails
   const whitelistedEmails = (
+    process.env.TEST_MODE_EMAILS ||
     process.env.TEST_SHOP_ADMIN_EMAILS ||
     process.env.NEXT_PUBLIC_TEST_SHOP_ADMIN_EMAILS ||
     ""
