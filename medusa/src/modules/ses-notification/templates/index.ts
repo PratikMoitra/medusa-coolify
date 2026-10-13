@@ -499,7 +499,7 @@ export function orderConfirmationEmail(data: OrderData): { subject: string; html
     </p>`
 
   return {
-    subject: `Order #${data.display_id} confirmed — ${data.storeName}`,
+    subject: `All set! ChamkileyStore order is confirmed. Invoice #${data.display_id}`,
     html: baseLayout(data.storeName, content),
   }
 }
@@ -605,7 +605,7 @@ export function refundEmail(data: RefundData): { subject: string; html: string }
     </div>`
 
   return {
-    subject: `Refund processed for Order #${data.display_id} — ${data.storeName}`,
+    subject: `Your refund has been processed — ChamkileyStore`,
     html: baseLayout(data.storeName, content),
   }
 }
@@ -645,7 +645,7 @@ export function shippingNotificationEmail(data: ShippingData): { subject: string
     </div>`
 
   return {
-    subject: `Your order #${data.display_id} has shipped — ${data.storeName}`,
+    subject: `We've shipped your order — ChamkileyStore`,
     html: baseLayout(data.storeName, content),
   }
 }
