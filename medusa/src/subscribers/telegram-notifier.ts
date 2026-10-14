@@ -53,6 +53,9 @@ export default async function telegramNotifier({
     switch (eventName) {
       // ── New Order ──
       case "order.placed": {
+        // Wait for invoice number subscriber to generate the invoice number
+        await new Promise((r) => setTimeout(r, 3000))
+
         const orderService = container.resolve(Modules.ORDER)
         const order = await orderService.retrieveOrder(data.id, {
           relations: ["items", "shipping_address", "summary"],

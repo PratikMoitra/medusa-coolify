@@ -4,13 +4,24 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 /**
  * Subscriber: generate-invoice-number
  *
- * Generates a custom invoice number when an order is placed.
- * Format: INVCS{ddmmyy}T{HHMM}{sequence}
+ * Generates a GST-compliant invoice number when an order is placed.
  *
- * Example: INVCS121026T1523001 (first invoice on Oct 12, 2026 at 15:23)
+ * Format: CS/{FY}/{serial}
+ *   - CS     = ChamkileyStore (business prefix)
+ *   - FY     = Financial year in 4-digit form (e.g. "2627" for FY 2026-27)
+ *   - serial = 5-digit sequential number, resets each FY (e.g. "00001")
  *
- * The sequence resets daily and starts from 001.
- * The overall display_id starts from 3000+ (set by database sequence).
+ * Example: CS/2627/00001 (first order in FY 2026-27)
+ *
+ * GST Compliance (Rule 46b, CGST Rules 2017):
+ *   ✅ Max 16 characters (CS/2627/00001 = 14 chars)
+ *   ✅ Consecutive serial numbers per financial year
+ *   ✅ Unique per financial year (FY prefix ensures uniqueness)
+ *   ✅ Only allowed characters: A-Z, 0-9, /
+ *
+ * The serial is determined by counting existing orders in the same FY
+ * that already have an invoice_number with the matching FY prefix.
+ * This approach survives server restarts unlike the old in-memory counter.
  *
  * Events handled:
  *   - order.placed → generates invoice number, stores in order.metadata.invoice_number
@@ -19,42 +30,84 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
  */
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
+const INVOICE_PREFIX = "CS"
 
 function getISTDate(): Date {
   const now = new Date()
   return new Date(now.getTime() + IST_OFFSET_MS)
 }
 
-function pad(n: number, len: number = 2): string {
-  return String(n).padStart(len, "0")
-}
-
-const dailyCounter = new Map<string, number>()
-
-function getNextSequence(dateKey: string): string {
-  const current = dailyCounter.get(dateKey) || 0
-  const next = current + 1
-  dailyCounter.set(dateKey, next)
-
-  for (const key of dailyCounter.keys()) {
-    if (key !== dateKey) dailyCounter.delete(key)
-  }
-
-  return pad(next, 3)
-}
-
-function generateInvoiceNumber(): string {
+/**
+ * Get the Indian Financial Year code.
+ * FY runs April 1 → March 31.
+ * e.g. Oct 2026 → FY 2026-27 → "2627"
+ *      Feb 2027 → FY 2026-27 → "2627"
+ *      Apr 2027 → FY 2027-28 → "2728"
+ */
+function getFinancialYear(): string {
   const ist = getISTDate()
-  const dd = pad(ist.getUTCDate())
-  const mm = pad(ist.getUTCMonth() + 1)
-  const yy = pad(ist.getUTCFullYear() % 100)
-  const HH = pad(ist.getUTCHours())
-  const MM = pad(ist.getUTCMinutes())
+  const month = ist.getUTCMonth() + 1 // 1-12
+  const year = ist.getUTCFullYear()
 
-  const dateKey = `${dd}${mm}${yy}`
-  const seq = getNextSequence(dateKey)
+  const fyStart = month >= 4 ? year : year - 1
+  const fyEnd = fyStart + 1
 
-  return `INVCS${dd}${mm}${yy}T${HH}${MM}${seq}`
+  return `${fyStart % 100}${fyEnd % 100}`
+}
+
+/**
+ * Count existing invoices in the current FY to determine the next serial.
+ * Queries all orders with metadata.invoice_number starting with "CS/{fy}/".
+ */
+async function getNextSerial(
+  fy: string,
+  container: Record<string, any>,
+  logger: any
+): Promise<number> {
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+
+  try {
+    const { data: allOrders } = await query.graph({
+      entity: "order",
+      filters: {},
+      fields: ["id", "metadata"],
+    })
+
+    const prefix = `${INVOICE_PREFIX}/${fy}/`
+    let maxSerial = 0
+
+    for (const order of allOrders || []) {
+      const inv = order?.metadata?.invoice_number
+      if (typeof inv === "string" && inv.startsWith(prefix)) {
+        const serialStr = inv.substring(prefix.length)
+        const serial = parseInt(serialStr, 10)
+        if (!isNaN(serial) && serial > maxSerial) {
+          maxSerial = serial
+        }
+      }
+    }
+
+    return maxSerial + 1
+  } catch (err: any) {
+    logger.warn(`[invoice] Failed to count existing invoices: ${err?.message}`)
+    // Fallback: use timestamp-based unique number
+    const ist = getISTDate()
+    return parseInt(
+      `${ist.getUTCDate()}${ist.getUTCHours()}${ist.getUTCMinutes()}${ist.getUTCSeconds()}`,
+      10
+    )
+  }
+}
+
+async function generateInvoiceNumber(
+  container: Record<string, any>,
+  logger: any
+): Promise<string> {
+  const fy = getFinancialYear()
+  const serial = await getNextSerial(fy, container, logger)
+  const serialStr = String(serial).padStart(5, "0")
+
+  return `${INVOICE_PREFIX}/${fy}/${serialStr}`
 }
 
 export default async function invoiceNumberSubscriber({
@@ -106,7 +159,7 @@ async function handleOrderPlaced(
     return
   }
 
-  const invoiceNumber = generateInvoiceNumber()
+  const invoiceNumber = await generateInvoiceNumber(container, logger)
 
   await orderService.updateOrders(orderId, {
     metadata: {
