@@ -140,7 +140,7 @@ class FacebookAuthService extends AbstractAuthModuleProvider {
 
       // Fetch user profile
       const profileUrl = new URL("https://graph.facebook.com/v19.0/me")
-      profileUrl.searchParams.set("fields", "id,name,email,first_name,last_name,picture")
+      profileUrl.searchParams.set("fields", "id,name,email,first_name,last_name,picture.width(200).height(200)")
       profileUrl.searchParams.set("access_token", accessToken)
 
       const profile: FacebookProfile = await fetch(profileUrl.toString()).then((r) => {
@@ -182,6 +182,11 @@ class FacebookAuthService extends AbstractAuthModuleProvider {
 
     try {
       authIdentity = await authIdentityService.retrieve({ entity_id })
+      // Always update metadata on login so avatar/name stay fresh
+      await authIdentityService.update(authIdentity.id, {
+        user_metadata: userMetadata,
+      })
+      authIdentity.user_metadata = userMetadata
     } catch (error: any) {
       if (error.type === MedusaError.Types.NOT_FOUND) {
         const createdAuthIdentity = await authIdentityService.create({
