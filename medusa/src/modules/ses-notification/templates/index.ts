@@ -649,3 +649,63 @@ export function shippingNotificationEmail(data: ShippingData): { subject: string
     html: baseLayout(data.storeName, content),
   }
 }
+
+interface NewsletterWelcomeData {
+  email: string
+  couponCode: string
+  storeName: string
+  storeUrl?: string
+}
+
+export function newsletterWelcomeEmail(data: NewsletterWelcomeData): { subject: string; html: string } {
+  const brand = getBrand(data.storeName)
+  const shopUrl = data.storeUrl || "https://chamkileystore.in"
+
+  const content = `
+    <div style="padding:36px 40px;">
+      <div style="text-align:center;margin-bottom:28px;">
+        <div style="width:40px;height:4px;background:${brand.primary};border-radius:2px;margin:0 auto 20px;"></div>
+        ${brand.logo ? `<img src="${brand.logo}" alt="${data.storeName}" style="max-height:100px;max-width:300px;display:inline-block;margin-bottom:16px;" />` : ""}
+        <h2 style="margin:0 0 6px;color:#333;font-size:22px;font-weight:700;">Welcome to the Chamkiley Fam! 🎉</h2>
+        <p style="margin:0;color:#777;font-size:14px;">Thank you for subscribing — you're now part of the coolest crew!</p>
+      </div>
+
+      <div style="background:linear-gradient(135deg,#FDF2F8,#FFF7ED);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center;border:2px dashed ${brand.primary};">
+        <p style="margin:0 0 8px;color:#555;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:2px;">Your Exclusive Subscriber Discount</p>
+        <div style="background:#fff;border-radius:8px;padding:16px 24px;display:inline-block;margin:8px 0;">
+          <span style="font-size:28px;font-weight:800;color:${brand.primary};letter-spacing:2px;">${data.couponCode}</span>
+        </div>
+        <p style="margin:8px 0 0;color:#333;font-size:16px;font-weight:600;">5% OFF your next order 🛍️</p>
+        <p style="margin:4px 0 0;color:#888;font-size:11px;">Single-use • Exclusively for you • No minimum order</p>
+      </div>
+
+      <div style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:24px;">
+        <p style="margin:0 0 12px;color:#555;font-size:14px;font-weight:600;">As a subscriber, you'll get:</p>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr><td style="padding:8px 0;color:#333;font-size:14px;border-bottom:1px solid #eee;">🔥 Early access to new product drops</td></tr>
+          <tr><td style="padding:8px 0;color:#333;font-size:14px;border-bottom:1px solid #eee;">💰 Exclusive member-only discounts</td></tr>
+          <tr><td style="padding:8px 0;color:#333;font-size:14px;border-bottom:1px solid #eee;">🎨 Behind-the-scenes design stories</td></tr>
+          <tr><td style="padding:8px 0;color:#333;font-size:14px;">📦 First-to-know about limited editions</td></tr>
+        </table>
+      </div>
+
+      <div style="text-align:center;margin-bottom:24px;">
+        <a href="${shopUrl}/shop" style="display:inline-block;padding:14px 40px;background:${brand.buttonBg};color:${brand.buttonText};text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">
+          Shop Now & Use Your Coupon
+        </a>
+      </div>
+
+      <div style="background:#FFFBEB;border-radius:8px;padding:16px;text-align:center;border:1px solid #FDE68A;">
+        <p style="margin:0 0 4px;color:#92400E;font-size:13px;font-weight:600;">Help us grow! ⭐</p>
+        <p style="margin:0;color:#78716C;font-size:12px;">
+          Love quirky tees? Leave us a review —
+          <a href="https://g.page/r/CWb4Vew3FOEZEBI/review" style="color:${brand.primary};font-weight:600;">Review on Google</a>
+        </p>
+      </div>
+    </div>`
+
+  return {
+    subject: `Welcome to the Chamkiley Fam! 🎉 Here's 5% Off`,
+    html: baseLayout(data.storeName, content),
+  }
+}
