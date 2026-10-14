@@ -655,6 +655,7 @@ interface NewsletterWelcomeData {
   couponCode: string
   storeName: string
   storeUrl?: string
+  unsubscribeUrl?: string
 }
 
 export function newsletterWelcomeEmail(data: NewsletterWelcomeData): { subject: string; html: string } {
@@ -700,6 +701,13 @@ export function newsletterWelcomeEmail(data: NewsletterWelcomeData): { subject: 
         <p style="margin:0;color:#78716C;font-size:12px;">
           Love quirky tees? Leave us a review —
           <a href="https://g.page/r/CWb4Vew3FOEZEBI/review" style="color:${brand.primary};font-weight:600;">Review on Google</a>
+        </p>
+      </div>
+
+      <div style="text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #eee;">
+        <p style="margin:0;color:#aaa;font-size:11px;">
+          You're receiving this because you subscribed at ${data.storeName}.
+          ${data.unsubscribeUrl ? `<a href="${data.unsubscribeUrl}" style="color:#aaa;text-decoration:underline;">Unsubscribe</a>` : ""}
         </p>
       </div>
     </div>`

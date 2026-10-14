@@ -59,12 +59,16 @@ export default async function newsletterWelcomeHandler({
       return
     }
 
-    // Store coupon in customer metadata
+    // Generate a secure unsubscribe token
+    const unsubToken = generateToken(32)
+
+    // Store coupon + unsubscribe token in customer metadata
     await customerService.updateCustomers(customer.id, {
       metadata: {
         ...customer.metadata,
         subscriber_coupon_code: code,
         coupon_generated_at: new Date().toISOString(),
+        unsubscribe_token: unsubToken,
       },
     })
 
@@ -76,6 +80,7 @@ export default async function newsletterWelcomeHandler({
       couponCode: code,
       storeName: "ChamkileyStore",
       storeUrl,
+      unsubscribeUrl: `${storeUrl}/unsubscribe?token=${unsubToken}`,
     })
 
     const emailSent = await ses.sendEmail({
@@ -131,6 +136,15 @@ function generateCouponCode(): string {
     result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
   return result
+}
+
+function generateToken(length: number): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+  let token = ""
+  for (let i = 0; i < length; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return token
 }
 
 export const config: SubscriberConfig = {
