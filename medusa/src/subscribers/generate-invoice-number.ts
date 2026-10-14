@@ -6,22 +6,20 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
  *
  * Generates a GST-compliant invoice number when an order is placed.
  *
- * Format: CS/{FY}/{serial}
- *   - CS     = ChamkileyStore (business prefix)
+ * Format: {PREFIX}/{FY}/{serial}
+ *   - PREFIX = Sales channel prefix (CS for ChamkileyStore, KK for Kalakavya)
  *   - FY     = Financial year in 4-digit form (e.g. "2627" for FY 2026-27)
- *   - serial = 5-digit sequential number, resets each FY (e.g. "00001")
+ *   - serial = 5-digit sequential number per prefix+FY, resets each FY
  *
- * Example: CS/2627/00001 (first order in FY 2026-27)
+ * Examples:
+ *   CS/2627/00001 (first ChamkileyStore order in FY 2026-27)
+ *   KK/2627/00001 (first Kalakavya order in FY 2026-27)
  *
  * GST Compliance (Rule 46b, CGST Rules 2017):
  *   ✅ Max 16 characters (CS/2627/00001 = 14 chars)
- *   ✅ Consecutive serial numbers per financial year
- *   ✅ Unique per financial year (FY prefix ensures uniqueness)
+ *   ✅ Consecutive serial numbers per financial year per channel
+ *   ✅ Unique per financial year (prefix+FY ensures uniqueness)
  *   ✅ Only allowed characters: A-Z, 0-9, /
- *
- * The serial is determined by counting existing orders in the same FY
- * that already have an invoice_number with the matching FY prefix.
- * This approach survives server restarts unlike the old in-memory counter.
  *
  * Events handled:
  *   - order.placed → generates invoice number, stores in order.metadata.invoice_number
@@ -30,7 +28,13 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
  */
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
-const INVOICE_PREFIX = "CS"
+
+/** Sales channel name → invoice prefix mapping */
+const CHANNEL_PREFIX_MAP: Record<string, string> = {
+  chamkiley: "CS",
+  kalakavya: "KK",
+}
+const DEFAULT_PREFIX = "CS"
 
 function getISTDate(): Date {
   const now = new Date()
@@ -56,10 +60,47 @@ function getFinancialYear(): string {
 }
 
 /**
- * Count existing invoices in the current FY to determine the next serial.
- * Queries all orders with metadata.invoice_number starting with "CS/{fy}/".
+ * Resolve the invoice prefix from the order's sales channel.
+ * Falls back to DEFAULT_PREFIX ("CS") if channel can't be determined.
+ */
+async function resolveInvoicePrefix(
+  orderId: string,
+  container: Record<string, any>,
+  logger: any
+): Promise<string> {
+  try {
+    const orderService = container.resolve(Modules.ORDER)
+    const order = await orderService.retrieveOrder(orderId)
+    const salesChannelId = (order as any)?.sales_channel_id
+
+    if (salesChannelId) {
+      try {
+        const scModule = container.resolve(Modules.SALES_CHANNEL)
+        const channel = await scModule.retrieveSalesChannel(salesChannelId)
+        const channelName = (channel?.name || "").toLowerCase()
+
+        for (const [keyword, prefix] of Object.entries(CHANNEL_PREFIX_MAP)) {
+          if (channelName.includes(keyword)) {
+            return prefix
+          }
+        }
+      } catch {
+        logger.warn(`[invoice] Could not resolve sales channel for order ${orderId}`)
+      }
+    }
+  } catch {
+    // Order lookup failed, use default
+  }
+
+  return DEFAULT_PREFIX
+}
+
+/**
+ * Count existing invoices with the same prefix+FY to determine the next serial.
+ * Queries all orders and finds the max serial for the given prefix/fy combination.
  */
 async function getNextSerial(
+  prefix: string,
   fy: string,
   container: Record<string, any>,
   logger: any
@@ -73,13 +114,13 @@ async function getNextSerial(
       fields: ["id", "metadata"],
     })
 
-    const prefix = `${INVOICE_PREFIX}/${fy}/`
+    const invoicePrefix = `${prefix}/${fy}/`
     let maxSerial = 0
 
     for (const order of allOrders || []) {
       const inv = order?.metadata?.invoice_number
-      if (typeof inv === "string" && inv.startsWith(prefix)) {
-        const serialStr = inv.substring(prefix.length)
+      if (typeof inv === "string" && inv.startsWith(invoicePrefix)) {
+        const serialStr = inv.substring(invoicePrefix.length)
         const serial = parseInt(serialStr, 10)
         if (!isNaN(serial) && serial > maxSerial) {
           maxSerial = serial
@@ -90,7 +131,6 @@ async function getNextSerial(
     return maxSerial + 1
   } catch (err: any) {
     logger.warn(`[invoice] Failed to count existing invoices: ${err?.message}`)
-    // Fallback: use timestamp-based unique number
     const ist = getISTDate()
     return parseInt(
       `${ist.getUTCDate()}${ist.getUTCHours()}${ist.getUTCMinutes()}${ist.getUTCSeconds()}`,
@@ -100,14 +140,16 @@ async function getNextSerial(
 }
 
 async function generateInvoiceNumber(
+  orderId: string,
   container: Record<string, any>,
   logger: any
 ): Promise<string> {
+  const prefix = await resolveInvoicePrefix(orderId, container, logger)
   const fy = getFinancialYear()
-  const serial = await getNextSerial(fy, container, logger)
+  const serial = await getNextSerial(prefix, fy, container, logger)
   const serialStr = String(serial).padStart(5, "0")
 
-  return `${INVOICE_PREFIX}/${fy}/${serialStr}`
+  return `${prefix}/${fy}/${serialStr}`
 }
 
 export default async function invoiceNumberSubscriber({
@@ -159,7 +201,7 @@ async function handleOrderPlaced(
     return
   }
 
-  const invoiceNumber = await generateInvoiceNumber(container, logger)
+  const invoiceNumber = await generateInvoiceNumber(orderId, container, logger)
 
   await orderService.updateOrders(orderId, {
     metadata: {
