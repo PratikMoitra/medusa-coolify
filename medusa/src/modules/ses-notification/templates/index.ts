@@ -675,8 +675,8 @@ export function newsletterWelcomeEmail(data: NewsletterWelcomeData): { subject: 
         <div style="background:#fff;border-radius:8px;padding:16px 24px;display:inline-block;margin:8px 0;">
           <span style="font-size:28px;font-weight:800;color:${brand.primary};letter-spacing:2px;">${data.couponCode}</span>
         </div>
-        <p style="margin:8px 0 0;color:#333;font-size:16px;font-weight:600;">5% OFF your next order 🛍️</p>
-        <p style="margin:4px 0 0;color:#888;font-size:11px;">Single-use • Exclusively for you • No minimum order</p>
+        <p style="margin:8px 0 0;color:#333;font-size:16px;font-weight:600;">2% OFF your next order 🛍️</p>
+        <p style="margin:4px 0 0;color:#888;font-size:11px;">Single-use • Stackable with other offers • No minimum order</p>
       </div>
 
       <div style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:24px;">
@@ -705,7 +705,7 @@ export function newsletterWelcomeEmail(data: NewsletterWelcomeData): { subject: 
     </div>`
 
   return {
-    subject: `Welcome to the Chamkiley Fam! 🎉 Here's 5% Off`,
+    subject: `Welcome to the Chamkiley Fam! 🎉 Here's 2% Off`,
     html: baseLayout(data.storeName, content),
   }
 }

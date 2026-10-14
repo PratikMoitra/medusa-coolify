@@ -39,7 +39,7 @@ export default async function newsletterWelcomeHandler({
         is_automatic: false,
         application_method: {
           type: "percentage",
-          value: 5,
+          value: 2,
           target_type: "order",
           allocation: "across",
           currency_code: "inr",
@@ -101,7 +101,7 @@ export default async function newsletterWelcomeHandler({
         ``,
         `📧 Email: <code>${customer.email}</code>`,
         `🎟️ Coupon: <code>${code}</code>`,
-        `💰 Discount: 5% off`,
+        `💰 Discount: 2% off (stackable)`,
         `📩 Welcome email: ${emailSent ? "✅ Sent" : "❌ Failed"}`,
         `📅 ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
       ].join("\n")
