@@ -169,9 +169,9 @@ module.exports = defineConfig({
             resolve: "./src/modules/auth-facebook",
             id: "facebook",
             options: {
-              clientId: process.env.FACEBOOK_CLIENT_ID,
+              clientID: process.env.FACEBOOK_CLIENT_ID,
               clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
-              callbackUrl: process.env.FACEBOOK_CALLBACK_URL || `${process.env.BACKEND_URL}/auth/customer/facebook/callback`,
+              callbackURL: process.env.FACEBOOK_CALLBACK_URL || `${process.env.BACKEND_URL}/auth/customer/facebook/callback`,
             },
           }] : []),
         ],
