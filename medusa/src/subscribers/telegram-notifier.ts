@@ -58,7 +58,7 @@ export default async function telegramNotifier({
           relations: ["items", "shipping_address", "summary"],
         })
 
-        const invoice = order.metadata?.invoice_number || `#${order.display_id}`
+        const invoice = String(order.metadata?.invoice_number || `#${order.display_id}`)
         const name = order.shipping_address
           ? `${order.shipping_address.first_name || ""} ${order.shipping_address.last_name || ""}`.trim()
           : "Unknown"
@@ -68,12 +68,12 @@ export default async function telegramNotifier({
         const phone = order.shipping_address?.phone || ""
         const email = order.email || ""
 
-        const subtotal = order.summary?.original_order_total
+        const subtotal = Number(order.summary?.original_order_total
           ?? order.summary?.current_order_total
-          ?? order.items?.reduce((s: number, i: any) => s + (i.unit_price * i.quantity), 0)
-          ?? 0
-        const shipping = order.summary?.shipping_total ?? 0
-        const total = order.summary?.current_order_total ?? subtotal + shipping
+          ?? order.items?.reduce((s: number, i: any) => s + (Number(i.unit_price) * i.quantity), 0)
+          ?? 0)
+        const shipping = Number((order.summary as any)?.shipping_total ?? 0)
+        const total = Number(order.summary?.current_order_total ?? subtotal + shipping)
 
         const itemLines = (order.items || [])
           .map((i: any) => {
@@ -125,7 +125,7 @@ export default async function telegramNotifier({
           try {
             const orderService = container.resolve(Modules.ORDER)
             const order = await orderService.retrieveOrder(orderId)
-            invoice = order.metadata?.invoice_number || `#${order.display_id}`
+            invoice = String(order.metadata?.invoice_number || `#${order.display_id}`)
             orderDisplayId = `#${order.display_id}`
           } catch {}
         }
@@ -161,7 +161,7 @@ export default async function telegramNotifier({
           try {
             const orderService = container.resolve(Modules.ORDER)
             const order = await orderService.retrieveOrder(orderId)
-            invoice = order.metadata?.invoice_number || `#${order.display_id}`
+            invoice = String(order.metadata?.invoice_number || `#${order.display_id}`)
           } catch {}
         }
 
@@ -214,7 +214,7 @@ export default async function telegramNotifier({
           try {
             const orderService = container.resolve(Modules.ORDER)
             const order = await orderService.retrieveOrder(data.order_id || data.id)
-            invoice = order.metadata?.invoice_number || `#${order.display_id}`
+            invoice = String(order.metadata?.invoice_number || `#${order.display_id}`)
           } catch {}
         }
 
