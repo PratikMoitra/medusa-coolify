@@ -8,9 +8,6 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
  *
  * Placed under /custom/ instead of /store/ to avoid MedusaJS's
  * publishable API key middleware which scopes /store/* routes.
- *
- * Returns the promotion details (code, status, type, application_method)
- * so the storefront can display discount info before checkout.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const code = (req.query.code as string || "").trim()
@@ -24,14 +21,14 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
     const promotionService = req.scope.resolve("promotionModuleService") as any
 
-    const [promotions] = await promotionService.listAndCountPromotions(
+    const promotions = await promotionService.listPromotions(
       { code: [code] },
       {
         relations: ["application_method"],
       }
     )
 
-    logger.info(`[custom/promotions] Looked up code="${code}", found ${promotions?.length ?? 0} promotions`)
+    logger.info(`[custom/promotions] code="${code}" → found ${promotions?.length ?? 0}`)
 
     if (!promotions || promotions.length === 0) {
       return res.json({ promotions: [] })
@@ -58,9 +55,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     return res.json({ promotions: safePromotions })
   } catch (err: any) {
-    logger.error(`[custom/promotions] Error looking up code "${code}": ${err?.message}`)
+    logger.error(`[custom/promotions] Error: ${err?.message}`)
+    logger.error(`[custom/promotions] Stack: ${err?.stack}`)
     return res.status(500).json({
       error: "Failed to look up promotion",
+      message: err?.message,
     })
   }
 }
