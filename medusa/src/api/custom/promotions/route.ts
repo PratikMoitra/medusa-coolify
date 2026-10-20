@@ -1,15 +1,16 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 
 /**
- * GET /store/promotions?code=FESTIVE2026
+ * GET /custom/promotions?code=FESTIVE2026
  *
- * Custom store endpoint that lets the storefront validate a promotion code
- * without needing a cart. MedusaJS v2 does not expose a Store API for listing
- * promotions — this route fills that gap.
+ * Public endpoint that lets the storefront validate a promotion code
+ * without needing a cart or publishable API key.
  *
- * Returns the promotion details (code, status, type, application_method) so
- * the storefront can display discount info and decide whether to apply it at
- * checkout via POST /store/carts/:id/promotions.
+ * Placed under /custom/ instead of /store/ to avoid MedusaJS's
+ * publishable API key middleware which scopes /store/* routes.
+ *
+ * Returns the promotion details (code, status, type, application_method)
+ * so the storefront can display discount info before checkout.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const code = (req.query.code as string || "").trim()
@@ -29,6 +30,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         relations: ["application_method"],
       }
     )
+
+    logger.info(`[custom/promotions] Looked up code="${code}", found ${promotions?.length ?? 0} promotions`)
 
     if (!promotions || promotions.length === 0) {
       return res.json({ promotions: [] })
@@ -55,7 +58,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     return res.json({ promotions: safePromotions })
   } catch (err: any) {
-    logger.error(`[store/promotions] Error looking up code "${code}": ${err?.message}`)
+    logger.error(`[custom/promotions] Error looking up code "${code}": ${err?.message}`)
     return res.status(500).json({
       error: "Failed to look up promotion",
     })
