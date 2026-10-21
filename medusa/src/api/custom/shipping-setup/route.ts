@@ -47,6 +47,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         "prices.id",
         "prices.amount",
         "prices.currency_code",
+        "prices.price_set_id",
         "prices.price_rules.*",
       ],
     })
@@ -97,38 +98,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     // Use the Pricing Module to add conditional prices
     const pricingModule = req.scope.resolve(Modules.PRICING) as any
 
-    // First, find the price set linked to this shipping option
-    let priceSetResult: any = null
-    try {
-      const { data } = await query.graph({
-        entity: "shipping_option",
-        fields: ["id", "price_set.id", "price_set.prices.*", "price_set.prices.price_rules.*"],
-        filters: { id: standardOption.id },
-      })
-      priceSetResult = (data as any[])?.[0]
-    } catch (e: any) {
-      logger.warn(`[shipping-setup] price_set traversal failed: ${e.message}`)
-    }
-
-    const priceSetId = priceSetResult?.price_set?.id
+    // Get price_set_id from the prices array (price_set traversal doesn't work for shipping options)
+    const firstPrice = standardOption.prices?.[0]
+    const priceSetId = firstPrice?.price_set_id
     if (!priceSetId) {
       return res.status(500).json({
-        error: "Could not find price_set for the shipping option",
+        error: "Could not find price_set_id on the shipping option's prices",
         option: standardOption,
-        priceSetResult,
       })
     }
 
     logger.info(`[shipping-setup] Price set ID: ${priceSetId}`)
 
     // Remove existing prices (clean slate)
-    const existingPrices = priceSetResult.price_set.prices || []
-    if (existingPrices.length > 0) {
-      const priceIds = existingPrices.map((p: any) => p.id)
+    const existingPriceIds = (standardOption.prices || []).map((p: any) => p.id)
+    if (existingPriceIds.length > 0) {
       logger.info(
-        `[shipping-setup] Removing ${priceIds.length} existing prices: ${priceIds.join(", ")}`
+        `[shipping-setup] Removing ${existingPriceIds.length} existing prices: ${existingPriceIds.join(", ")}`
       )
-      await pricingModule.removePrices(priceIds)
+      await pricingModule.removePrices(existingPriceIds)
     }
 
     // Add new conditional prices
