@@ -4,24 +4,19 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 /**
  * POST /custom/shipping-setup
  *
- * One-time setup endpoint to configure conditional price rules on
- * the Standard Shipping option.
+ * Configures the shipping threshold in MedusaJS.
  *
- * Creates 2 price rules:
- *   - ₹100 when item_total <= 999 (standard shipping)
- *   - ₹0 when item_total >= 1000 (free shipping)
+ * Sets up:
+ *   1. Standard Shipping option with its flat price (e.g., ₹100)
+ *   2. Free Shipping option's type description to include the threshold
  *
- * After running this, the "Free Shipping" option can be removed
- * from MedusaJS Admin since the tiers are now on one option.
+ * The /custom/shipping-info endpoint reads these values to determine tiers.
  *
- * This endpoint is idempotent — running it again clears old rules
- * and recreates them.
- *
- * Request body (optional):
+ * Request body:
  * {
- *   "threshold": 1000,      // default 1000
- *   "standardCost": 100,    // default 100
- *   "dryRun": true           // default false
+ *   "threshold": 1000,       // Free shipping threshold (default 1000)
+ *   "standardCost": 100,     // Standard shipping cost (default 100)
+ *   "dryRun": true            // Preview changes without applying
  * }
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
@@ -35,7 +30,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
 
-    // Find the Standard Shipping option (non-return, non-free, flat rate)
+    // Find all non-return shipping options
     const { data: shippingOptions } = await query.graph({
       entity: "shipping_option",
       fields: [
@@ -48,132 +43,150 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         "prices.amount",
         "prices.currency_code",
         "prices.price_set_id",
-        "prices.price_rules.*",
+        "type.id",
+        "type.label",
+        "type.description",
+        "type.code",
       ],
     })
 
-    const standardOption = (shippingOptions as any[]).find((opt) => {
+    const storeOptions = (shippingOptions as any[]).filter((opt) => {
       const rules = opt.rules || []
-      const isReturn = rules.some(
+      return !rules.some(
         (r: any) => r.attribute === "is_return" && r.value === "true"
       )
-      const isFree = opt.name?.toLowerCase().includes("free")
-      return !isReturn && !isFree && opt.price_type === "flat"
     })
 
-    if (!standardOption) {
+    const standardOpt = storeOptions.find(
+      (o) =>
+        !o.name?.toLowerCase().includes("free") &&
+        !o.type?.code?.includes("free")
+    )
+
+    const freeOpt = storeOptions.find(
+      (o) =>
+        o.name?.toLowerCase().includes("free") ||
+        o.type?.code?.includes("free")
+    )
+
+    if (!standardOpt || !freeOpt) {
       return res.status(404).json({
-        error: "No Standard Shipping option found",
-        all_options: (shippingOptions as any[]).map((o: any) => ({
+        error:
+          "Need both 'Standard Shipping' and 'Free Shipping' options in MedusaJS. " +
+          "Create them in Admin → Settings → Regions.",
+        found: storeOptions.map((o: any) => ({
           id: o.id,
           name: o.name,
-          price_type: o.price_type,
+          type: o.type?.code,
         })),
       })
     }
 
-    logger.info(
-      `[shipping-setup] Found Standard Shipping: ${standardOption.id} (${standardOption.name})`
-    )
+    // Current state
+    const currentStandardPrice =
+      standardOpt.prices?.find((p: any) => p.currency_code === "inr")
+        ?.amount ?? 0
+    const currentDescription = freeOpt.type?.description || ""
 
     if (dryRun) {
       return res.json({
         dryRun: true,
-        standardOption: {
-          id: standardOption.id,
-          name: standardOption.name,
-          currentPrices: standardOption.prices,
+        currentState: {
+          standardShipping: {
+            id: standardOpt.id,
+            name: standardOpt.name,
+            price: currentStandardPrice,
+          },
+          freeShipping: {
+            id: freeOpt.id,
+            name: freeOpt.name,
+            typeDescription: currentDescription,
+          },
         },
         willConfigure: {
-          threshold,
           standardCost,
-          rules: [
-            { amount: standardCost, rule: `item_total lte ${threshold - 1}` },
-            { amount: 0, rule: `item_total gte ${threshold}` },
-          ],
+          threshold,
+          freeShippingDescription: `Free shipping on orders above ₹${threshold}`,
         },
       })
     }
 
-    // Use the Pricing Module to add conditional prices
     const pricingModule = req.scope.resolve(Modules.PRICING) as any
+    const fulfillmentModule = req.scope.resolve(Modules.FULFILLMENT) as any
 
-    // Get price_set_id from the prices array (price_set traversal doesn't work for shipping options)
-    const firstPrice = standardOption.prices?.[0]
-    const priceSetId = firstPrice?.price_set_id
-    if (!priceSetId) {
-      return res.status(500).json({
-        error: "Could not find price_set_id on the shipping option's prices",
-        option: standardOption,
-      })
-    }
-
-    logger.info(`[shipping-setup] Price set ID: ${priceSetId}`)
-
-    // Remove existing prices (clean slate)
-    const existingPriceIds = (standardOption.prices || []).map((p: any) => p.id)
-    if (existingPriceIds.length > 0) {
-      logger.info(
-        `[shipping-setup] Removing ${existingPriceIds.length} existing prices: ${existingPriceIds.join(", ")}`
-      )
-      await pricingModule.removePrices(existingPriceIds)
-    }
-
-    // Add new conditional prices
-    await pricingModule.addPrices({
-      priceSetId,
-      prices: [
+    // 1. Ensure Standard Shipping has the correct price
+    const standardPriceEntry = standardOpt.prices?.find(
+      (p: any) => p.currency_code === "inr"
+    )
+    if (standardPriceEntry && standardPriceEntry.amount !== standardCost) {
+      await pricingModule.updatePrices([
         {
-          currency_code: "inr",
+          id: standardPriceEntry.id,
           amount: standardCost,
-          rules: {
-            item_total: {
-              operator: "lte",
-              value: threshold - 1,
-            },
-          },
         },
-        {
-          currency_code: "inr",
-          amount: 0,
-          rules: {
-            item_total: {
-              operator: "gte",
-              value: threshold,
+      ])
+      logger.info(
+        `[shipping-setup] Updated Standard Shipping price: ₹${currentStandardPrice} → ₹${standardCost}`
+      )
+    } else if (!standardPriceEntry) {
+      // Add a price if none exists
+      const priceSetId = standardOpt.prices?.[0]?.price_set_id
+      if (priceSetId) {
+        await pricingModule.addPrices({
+          priceSetId,
+          prices: [
+            {
+              currency_code: "inr",
+              amount: standardCost,
             },
-          },
-        },
-      ],
-    })
+          ],
+        })
+        logger.info(
+          `[shipping-setup] Added Standard Shipping price: ₹${standardCost}`
+        )
+      }
+    }
+
+    // 2. Update Free Shipping type description with the threshold
+    const newDescription = `Free shipping on orders above ₹${threshold}`
+    if (freeOpt.type?.id && currentDescription !== newDescription) {
+      try {
+        await fulfillmentModule.updateShippingOptionTypes(freeOpt.type.id, {
+          description: newDescription,
+        })
+        logger.info(
+          `[shipping-setup] Updated Free Shipping description: "${newDescription}"`
+        )
+      } catch (e: any) {
+        // If updateShippingOptionTypes doesn't exist, try direct update
+        logger.warn(
+          `[shipping-setup] Could not update shipping option type description: ${e.message}. ` +
+            `Please update it manually in Admin. The current description is: "${currentDescription}"`
+        )
+      }
+    }
 
     logger.info(
-      `[shipping-setup] ✅ Configured: ₹${standardCost} when item_total <= ${threshold - 1}, ₹0 when item_total >= ${threshold}`
+      `[shipping-setup] ✅ Configured: Standard=₹${standardCost}, Free above ₹${threshold}`
     )
-
-    // Verify
-    const { data: verified } = await query.graph({
-      entity: "shipping_option",
-      fields: [
-        "id",
-        "name",
-        "prices.id",
-        "prices.amount",
-        "prices.currency_code",
-        "prices.price_rules.*",
-      ],
-      filters: { id: standardOption.id },
-    })
 
     return res.json({
       success: true,
-      message: `Configured conditional pricing on "${standardOption.name}"`,
-      threshold,
-      standardCost,
-      rules: [
-        `₹${standardCost} when item_total <= ${threshold - 1}`,
-        `₹0 (free) when item_total >= ${threshold}`,
-      ],
-      verifiedData: (verified as any[])?.[0],
+      message: `Configured shipping: ₹${standardCost} for orders under ₹${threshold}, free above`,
+      standardShipping: {
+        id: standardOpt.id,
+        price: standardCost,
+      },
+      freeShipping: {
+        id: freeOpt.id,
+        threshold,
+        description: newDescription,
+      },
+      note:
+        currentDescription !== newDescription
+          ? `Free Shipping type description should be "${newDescription}". ` +
+            `If the update failed, set it manually in MedusaJS Admin → Settings → Regions → Free Shipping.`
+          : undefined,
     })
   } catch (err: any) {
     logger.error(`[shipping-setup] Error: ${err?.message ?? String(err)}`)
