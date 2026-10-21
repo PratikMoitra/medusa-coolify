@@ -4,25 +4,29 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 /**
  * GET /custom/shipping-info
  *
- * Public endpoint — returns tiered shipping cost data for storefront display.
- * Reads shipping option prices + price rules from Medusa's pricing module
- * to build a dynamic tier map like:
+ * Public endpoint — returns shipping cost tiers for the storefront.
  *
+ * Reads shipping options + price rules from MedusaJS, builds tiers.
+ * If the data can't be parsed, falls back to env vars or sensible defaults.
+ *
+ * Response shape:
+ * {
  *   tiers: [
- *     { min: 0,    max: 500,  shipping_cost: 200 },
- *     { min: 500,  max: 1000, shipping_cost: 100 },
- *     { min: 1000, max: null, shipping_cost: 0   },  ← free
- *   ]
- *
- * The storefront uses this to show:
- *   "Add ₹X more to save ₹Y on shipping!"
- *   "Add ₹X more for FREE shipping!"
+ *     { min: 0,    max: 1000, shipping_cost: 100, label: "₹100 shipping" },
+ *     { min: 1000, max: null, shipping_cost: 0,   label: "Free Shipping"  },
+ *   ],
+ *   free_shipping_threshold: 1000,
+ *   standard_shipping_cost: 100,
+ *   currency_code: "inr"
+ * }
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  const logger = req.scope.resolve("logger") as any
+
   try {
     const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
 
-    // Fetch all shipping options with prices and their conditional rules
+    // Fetch all shipping options with price rules
     const { data: shippingOptions } = await query.graph({
       entity: "shipping_option",
       fields: [
@@ -36,31 +40,26 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "prices.id",
         "prices.amount",
         "prices.currency_code",
-        "prices.rules_count",
         "prices.price_rules.attribute",
         "prices.price_rules.value",
         "prices.price_rules.operator",
-        "type.label",
-        "type.description",
       ],
     })
 
-    // Filter: only store-enabled, non-return shipping options
+    // Filter: non-return, store-enabled options
     const storeOptions = (shippingOptions as any[]).filter((opt) => {
       const rules = opt.rules || []
       const isReturn = rules.some(
         (r: any) => r.attribute === "is_return" && r.value === "true"
       )
-      const isDisabled = rules.some(
-        (r: any) => r.attribute === "enabled_in_store" && r.value === "false"
-      )
-      return !isReturn && !isDisabled
+      return !isReturn
     })
 
-    let currencyCode = "inr"
+    logger.info(
+      `[shipping-info] Found ${storeOptions.length} store shipping options`
+    )
 
-    // Build tiers from the primary store shipping option
-    // (use the first one with multiple prices, typically the Shiprocket standard option)
+    // Try to extract tiers from price rules
     let tiers: Array<{
       min: number
       max: number | null
@@ -70,12 +69,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     for (const opt of storeOptions) {
       const prices = opt.prices || []
-      currencyCode = prices[0]?.currency_code || "inr"
 
-      if (prices.length < 2) continue // Skip options with only one price (no tiers)
+      if (prices.length < 2) continue
 
-      // Extract each price with its threshold rule
-      const priceTiers: Array<{
+      // Extract price rules and build tiers
+      const parsedPrices: Array<{
         amount: number
         threshold: number | null
         operator: string | null
@@ -87,156 +85,94 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         let operator: string | null = null
 
         for (const rule of priceRules) {
-          // Look for item_total / order_total / cart_total rules
           if (
             rule.attribute === "item_total" ||
             rule.attribute === "order_total" ||
-            rule.attribute === "cart_total" ||
-            rule.attribute === "currency_code" // skip currency rules
+            rule.attribute === "cart_total"
           ) {
-            if (rule.attribute !== "currency_code") {
-              threshold = Number(rule.value)
-              operator = rule.operator || "gte"
-            }
+            threshold = Number(rule.value)
+            operator = rule.operator || "gte"
           }
         }
 
-        priceTiers.push({
+        parsedPrices.push({
           amount: price.amount ?? 0,
           threshold,
           operator,
         })
       }
 
-      // Sort by threshold ascending (null threshold = base/default price)
-      priceTiers.sort((a, b) => {
-        if (a.threshold === null && b.threshold === null) return 0
-        if (a.threshold === null) return -1 // base price first
-        if (b.threshold === null) return -1
-        return a.threshold - b.threshold
-      })
+      logger.info(
+        `[shipping-info] Option "${opt.name}": ${parsedPrices.length} prices, rules: ${JSON.stringify(parsedPrices)}`
+      )
 
-      // Convert to tier ranges using operator-aware logic
-      // Real data: ₹200 when item_total lte 999, ₹0 when item_total gte 1000
-      // Expected tiers: [0,1000)=₹200, [1000,∞)=₹0
-      
-      if (priceTiers.length >= 2) {
-        // Strategy 1: All prices have operators — use lte/gte to build ranges
-        const allHaveRules = priceTiers.every((p) => p.threshold !== null)
-        
-        if (allHaveRules) {
-          // Group by operator
-          const ltePrices = priceTiers
-            .filter((p) => p.operator === "lte" || p.operator === "lt")
-            .sort((a, b) => a.threshold! - b.threshold!)
-          const gtePrices = priceTiers
-            .filter((p) => p.operator === "gte" || p.operator === "gt")
-            .sort((a, b) => a.threshold! - b.threshold!)
+      // Build tiers from parsed prices
+      const withThresholds = parsedPrices.filter((p) => p.threshold !== null)
+      const withoutThresholds = parsedPrices.filter(
+        (p) => p.threshold === null
+      )
 
-          // Build tiers: lte rules define upper bounds, gte rules define lower bounds
-          // Example: ₹200 when lte 999 → tier [0, 1000) = ₹200
-          //          ₹0 when gte 1000  → tier [1000, ∞)  = ₹0
-          
-          // Collect all breakpoints
-          const breakpoints = new Set<number>()
-          breakpoints.add(0) // always start from 0
-          for (const p of ltePrices) {
-            breakpoints.add(p.threshold! + 1) // lte 999 → next tier starts at 1000
-          }
-          for (const p of gtePrices) {
-            breakpoints.add(p.threshold!)
-          }
-          const sortedBP = [...breakpoints].sort((a, b) => a - b)
+      if (withThresholds.length >= 1 && withoutThresholds.length >= 1) {
+        // Strategy A: base price + conditional prices
+        const basePrice = withoutThresholds.sort(
+          (a, b) => b.amount - a.amount
+        )[0]
+        const conditionals = withThresholds.sort(
+          (a, b) => a.threshold! - b.threshold!
+        )
 
-          // For each breakpoint range, find the matching price
-          for (let i = 0; i < sortedBP.length; i++) {
-            const rangeStart = sortedBP[i]
-            const rangeEnd = sortedBP[i + 1] ?? null
-            
-            // Find which price applies at rangeStart
-            let matchingPrice = priceTiers.find((p) => {
-              if (p.operator === "lte" || p.operator === "lt") {
-                return rangeStart <= p.threshold!
-              }
-              if (p.operator === "gte" || p.operator === "gt") {
-                return rangeStart >= p.threshold!
-              }
-              return false
-            })
+        tiers.push({
+          min: 0,
+          max: conditionals[0].threshold!,
+          shipping_cost: basePrice.amount,
+        })
+        for (let i = 0; i < conditionals.length; i++) {
+          tiers.push({
+            min: conditionals[i].threshold!,
+            max: conditionals[i + 1]?.threshold ?? null,
+            shipping_cost: conditionals[i].amount,
+          })
+        }
+        break
+      }
 
-            if (matchingPrice) {
-              tiers.push({
-                min: rangeStart,
-                max: rangeEnd,
-                shipping_cost: matchingPrice.amount,
-              })
-            }
-          }
-        } else {
-          // Strategy 2: Some prices have no rules (base price) + conditional prices
-          const basePrice = priceTiers.find((p) => p.threshold === null)
-          const conditionalPrices = priceTiers
-            .filter((p) => p.threshold !== null)
-            .sort((a, b) => a.threshold! - b.threshold!)
+      if (withThresholds.length >= 2) {
+        // Strategy B: all prices have thresholds (lte/gte pairs)
+        const sorted = withThresholds.sort(
+          (a, b) => a.threshold! - b.threshold!
+        )
 
-          if (basePrice && conditionalPrices.length > 0) {
+        for (let i = 0; i < sorted.length; i++) {
+          const curr = sorted[i]
+          const next = sorted[i + 1]
+
+          if (curr.operator === "lte" || curr.operator === "lt") {
             tiers.push({
-              min: 0,
-              max: conditionalPrices[0].threshold!,
-              shipping_cost: basePrice.amount,
+              min: i === 0 ? 0 : (sorted[i - 1]?.threshold ?? 0),
+              max: curr.threshold! + 1,
+              shipping_cost: curr.amount,
             })
-
-            for (let i = 0; i < conditionalPrices.length; i++) {
-              const current = conditionalPrices[i]
-              const next = conditionalPrices[i + 1]
-              tiers.push({
-                min: current.threshold!,
-                max: next?.threshold ?? null,
-                shipping_cost: current.amount,
-              })
-            }
-          } else {
-            // Fallback: sort by amount descending
-            const sorted = [...priceTiers].sort((a, b) => b.amount - a.amount)
-            for (let i = 0; i < sorted.length; i++) {
-              tiers.push({
-                min: sorted[i].threshold ?? 0,
-                max: sorted[i + 1]?.threshold ?? null,
-                shipping_cost: sorted[i].amount,
-              })
-            }
+          } else if (curr.operator === "gte" || curr.operator === "gt") {
+            tiers.push({
+              min: curr.threshold!,
+              max: next?.threshold ?? null,
+              shipping_cost: curr.amount,
+            })
           }
         }
 
-        break // Use the first multi-price option only
+        if (tiers.length > 0) break
       }
     }
 
-    // Fallback: if no tiers detected from price rules, try env-based config
-    // Format: SHIPPING_TIERS=0:200,500:100,1000:0
-    if (tiers.length === 0 && process.env.SHIPPING_TIERS) {
-      const tierParts = process.env.SHIPPING_TIERS.split(",")
-      for (let i = 0; i < tierParts.length; i++) {
-        const [thresholdStr, costStr] = tierParts[i].split(":")
-        const nextThreshold = tierParts[i + 1]
-          ? Number(tierParts[i + 1].split(":")[0])
-          : null
-        tiers.push({
-          min: Number(thresholdStr),
-          max: nextThreshold,
-          shipping_cost: Number(costStr),
-        })
-      }
-    }
+    // Fallback: use env vars if no tiers could be parsed
+    if (tiers.length === 0) {
+      const threshold = Number(process.env.FREE_SHIPPING_THRESHOLD || 1000)
+      const standardCost = Number(process.env.STANDARD_SHIPPING_COST || 100)
 
-    // Fallback 2: single threshold from env
-    if (tiers.length === 0 && process.env.FREE_SHIPPING_THRESHOLD) {
-      const threshold = Number(process.env.FREE_SHIPPING_THRESHOLD)
-      // Find the standard shipping cost from options
-      const standardCost = storeOptions
-        .flatMap((o: any) => o.prices || [])
-        .filter((p: any) => p.amount > 0)
-        .sort((a: any, b: any) => b.amount - a.amount)[0]?.amount || 0
+      logger.warn(
+        `[shipping-info] No tiers from price rules. Using fallback: threshold=${threshold}, cost=${standardCost}`
+      )
 
       tiers = [
         { min: 0, max: threshold, shipping_cost: standardCost },
@@ -244,32 +180,55 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       ]
     }
 
-    // Add labels to tiers
+    // Add display labels
     tiers = tiers.map((tier) => ({
       ...tier,
       label:
         tier.shipping_cost === 0
           ? "Free Shipping"
-          : `₹${tier.shipping_cost / 100} shipping`,
+          : `\u20b9${tier.shipping_cost} shipping`,
     }))
 
-    // Determine highest threshold (free shipping target)
     const freeShippingThreshold =
       tiers.find((t) => t.shipping_cost === 0)?.min ?? null
-
-    // Current standard cost (lowest non-free tier)
     const standardShippingCost =
       tiers.find((t) => t.shipping_cost > 0)?.shipping_cost ?? null
+
+    logger.info(
+      `[shipping-info] Returning ${tiers.length} tiers, threshold=${freeShippingThreshold}, standard=${standardShippingCost}`
+    )
 
     return res.json({
       tiers,
       free_shipping_threshold: freeShippingThreshold,
       standard_shipping_cost: standardShippingCost,
-      currency_code: currencyCode,
+      currency_code: "inr",
     })
   } catch (err: any) {
-    const logger = req.scope.resolve("logger")
     logger.error(`[shipping-info] Error: ${err?.message ?? String(err)}`)
-    return res.status(500).json({ error: "Internal server error" })
+
+    // Even on error, return valid tiers so the storefront never breaks
+    const threshold = Number(process.env.FREE_SHIPPING_THRESHOLD || 1000)
+    const standardCost = Number(process.env.STANDARD_SHIPPING_COST || 100)
+
+    return res.json({
+      tiers: [
+        {
+          min: 0,
+          max: threshold,
+          shipping_cost: standardCost,
+          label: `\u20b9${standardCost} shipping`,
+        },
+        {
+          min: threshold,
+          max: null,
+          shipping_cost: 0,
+          label: "Free Shipping",
+        },
+      ],
+      free_shipping_threshold: threshold,
+      standard_shipping_cost: standardCost,
+      currency_code: "inr",
+    })
   }
 }
