@@ -13,7 +13,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
 
     // Strategy 1: Direct shipping_option with prices
-    let strategy1 = null
+    let strategy1: any = null
     try {
       const { data } = await query.graph({
         entity: "shipping_option",
@@ -34,7 +34,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
 
     // Strategy 2: Via price_set traversal (docs recommended)
-    let strategy2 = null
+    let strategy2: any = null
     try {
       const { data } = await query.graph({
         entity: "shipping_option",
@@ -54,7 +54,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
 
     // Strategy 3: Query shipping_option_type
-    let strategy3 = null
+    let strategy3: any = null
     try {
       const { data } = await query.graph({
         entity: "shipping_option",

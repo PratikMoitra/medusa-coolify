@@ -98,7 +98,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const pricingModule = req.scope.resolve(Modules.PRICING) as any
 
     // First, find the price set linked to this shipping option
-    let priceSetResult = null
+    let priceSetResult: any = null
     try {
       const { data } = await query.graph({
         entity: "shipping_option",
