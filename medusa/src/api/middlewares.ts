@@ -79,12 +79,74 @@ function patchFulfillmentDefaults(
   next()
 }
 
+/**
+ * CORS middleware for /custom/* routes.
+ *
+ * MedusaJS only applies CORS to /store/*, /admin/*, /auth/* routes.
+ * Our /custom/* endpoints are called from the storefront browser
+ * (e.g., shipping-info, promotions) and need CORS headers.
+ *
+ * Reads allowed origins from STORE_CORS env var (same as /store/*).
+ */
+function customCors(
+  req: MedusaRequest,
+  res: MedusaResponse,
+  next: MedusaNextFunction
+) {
+  const storeCors = process.env.STORE_CORS || ""
+  const origin = req.headers.origin || ""
+
+  // Parse STORE_CORS — can be comma-separated or regex patterns
+  const allowedOrigins = storeCors
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  let isAllowed = false
+  for (const pattern of allowedOrigins) {
+    if (pattern.startsWith("/") && pattern.endsWith("/")) {
+      // Regex pattern like /https:\/\/.*\.chamkileystore\.in/
+      try {
+        const regex = new RegExp(pattern.slice(1, -1))
+        if (regex.test(origin)) {
+          isAllowed = true
+          break
+        }
+      } catch {
+        // Invalid regex, skip
+      }
+    } else if (pattern === origin || pattern === "*") {
+      isAllowed = true
+      break
+    }
+  }
+
+  if (isAllowed && origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin)
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    res.setHeader("Access-Control-Allow-Credentials", "true")
+  }
+
+  // Handle preflight
+  if (req.method === "OPTIONS") {
+    res.status(204).end()
+    return
+  }
+
+  next()
+}
+
 export default defineMiddlewares({
   routes: [
     {
       matcher: "/admin/orders/:id",
       method: "GET",
       middlewares: [patchFulfillmentDefaults],
+    },
+    {
+      matcher: "/custom/*",
+      middlewares: [customCors],
     },
   ],
 })
