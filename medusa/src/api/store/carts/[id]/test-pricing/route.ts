@@ -1,5 +1,13 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
+import {
+  clearTestPricingFailures,
+  getTestPricingLockout,
+  isEmailAllowed,
+  readTestEmailWhitelist,
+  recordTestPricingFailure,
+  verifyTestShopPin,
+} from "../../../../../lib/test-pricing-auth"
 
 /**
  * POST /store/carts/:id/test-pricing
@@ -8,14 +16,29 @@ import { Modules } from "@medusajs/framework/utils"
  * Uses MedusaJS's is_custom_price flag so the price sticks
  * through cart recalculations.
  *
- * Body: { test_code: string }
+ * Body: { test_code: string, customer_email?: string }
+ *
+ * test_code is checked (constant-time) against the server-only env var
+ * TEST_SHOP_PIN. Unset/empty TEST_SHOP_PIN => always 403 (fail closed).
+ * 5 failures per IP within 10 minutes => 429 with Retry-After (in-memory,
+ * per instance). The code is never logged and never stored in metadata.
  *
  * This ensures the MedusaJS order, payment, invoice, and admin
  * all show ₹1 — not the original product price.
  */
+const GENERIC_FORBIDDEN = { error: "Test pricing is not available" }
+
+function clientIp(req: MedusaRequest): string {
+  return (
+    (req as any).ip ||
+    (req as any).socket?.remoteAddress ||
+    "unknown"
+  )
+}
+
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const cartId = req.params.id
-  const { test_code, customer_email } = req.body as {
+  const { test_code, customer_email } = (req.body || {}) as {
     test_code?: string
     customer_email?: string
   }
@@ -24,30 +47,26 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return res.status(400).json({ error: "Cart ID is required" })
   }
 
-  // Validate the test code against env
-  const validCode = process.env.TEST_MODE_CODE || process.env.TEST_SHOP_PIN || process.env.NEXT_PUBLIC_TEST_SHOP_PIN
-  if (!validCode || test_code?.toUpperCase() !== validCode.toUpperCase()) {
-    return res.status(403).json({ error: "Invalid test code" })
-  }
-
-  // Validate the customer email against whitelisted emails
-  const whitelistedEmails = (
-    process.env.TEST_MODE_EMAILS ||
-    process.env.TEST_SHOP_ADMIN_EMAILS ||
-    process.env.NEXT_PUBLIC_TEST_SHOP_ADMIN_EMAILS ||
-    ""
-  )
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean)
-
-  const normalizedEmail = (customer_email || "").trim().toLowerCase()
-
-  if (whitelistedEmails.length > 0 && !whitelistedEmails.includes(normalizedEmail)) {
+  // Per-IP brute-force protection (in-memory, per instance only).
+  const ip = clientIp(req)
+  const lockout = getTestPricingLockout(ip)
+  if (lockout.locked) {
+    res.setHeader("Retry-After", String(lockout.retryAfterSeconds))
     return res
-      .status(403)
-      .json({ error: "This test code is not available for your account" })
+      .status(429)
+      .json({ error: "Too many attempts. Please try again later." })
   }
+
+  // Server-only TEST_SHOP_PIN, timing-safe compare, fail closed when unset.
+  // Email whitelist is evaluated too; both failures return the same generic
+  // 403 so the response never reveals which check failed.
+  const pinOk = verifyTestShopPin(test_code)
+  const emailOk = isEmailAllowed(customer_email, readTestEmailWhitelist())
+  if (!pinOk || !emailOk) {
+    recordTestPricingFailure(ip)
+    return res.status(403).json(GENERIC_FORBIDDEN)
+  }
+  clearTestPricingFailures(ip)
 
   const logger = req.scope.resolve("logger")
 
@@ -78,12 +97,20 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     await Promise.all(updatePromises)
 
-    // Update cart metadata to mark as test mode
+    // Update cart metadata to mark as test mode.
+    // SECURITY: never store the code (or any value derived from it) here:
+    // cart/order metadata is readable via the public store API. Any stale
+    // test_code key from older versions is dropped from the spread.
+    // NOTE: test_mode is only a display hint — customers can set cart
+    // metadata themselves via POST /store/carts/:id, so nothing may trust it
+    // for pricing/payment decisions (the ₹1 price is enforced by
+    // is_custom_price line items set above, not by this flag).
+    const { test_code: _staleTestCode, ...existingMetadata } =
+      ((cart as any).metadata || {}) as Record<string, unknown>
     await cartModule.updateCarts(cartId, {
       metadata: {
-        ...((cart as any).metadata || {}),
+        ...existingMetadata,
         test_mode: true,
-        test_code,
         test_paid_amount_inr: items.reduce(
           (sum: number, item: any) => sum + (item.quantity || 1),
           0
