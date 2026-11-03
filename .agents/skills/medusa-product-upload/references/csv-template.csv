@@ -1,0 +1,16 @@
+handle,title,description,subtitle,sku,price,compare_price,option1_name,option1_value,option2_name,option2_value,option3_name,option3_value,images,category,tags,status,stock_qty,weight
+# ─── COUPLE PRODUCT EXAMPLE (3 options: His Size × Her Size × Color = 25 variants) ───
+example-couple-tee,Example Couple T-Shirt Set,"Full product description here.",Short subtitle,CS-EX-BLK-HS-HS,1199,1500,His Size,S,Her Size,S,Color,Black,"https://example.com/img1.webp|https://example.com/img2.webp",Couple,new|couple,published,50,420
+example-couple-tee,,,,CS-EX-BLK-HS-HM,1199,1500,His Size,S,Her Size,M,Color,Black,,,,published,50,420
+example-couple-tee,,,,CS-EX-BLK-HS-HL,1199,1500,His Size,S,Her Size,L,Color,Black,,,,published,50,420
+example-couple-tee,,,,CS-EX-BLK-HS-HXL,1199,1500,His Size,S,Her Size,XL,Color,Black,,,,published,50,420
+example-couple-tee,,,,CS-EX-BLK-HS-HXXL,1199,1500,His Size,S,Her Size,XXL,Color,Black,,,,published,50,420
+# ... repeat for His M, L, XL, XXL × all Her sizes (25 rows total per color)
+
+# ─── SINGLE PRODUCT EXAMPLE (2 options: Color × Size = 5 variants per color) ───
+example-single-tee,Example Single T-Shirt,"Full product description here.",Short subtitle,CS-EST-BLK-S,599,799,Color,Black,Size,S,,,"https://example.com/img1.webp",Tees,new|single,published,50,210
+example-single-tee,,,,CS-EST-BLK-M,599,799,Color,Black,Size,M,,,,,,published,50,210
+example-single-tee,,,,CS-EST-BLK-L,599,799,Color,Black,Size,L,,,,,,published,50,210
+example-single-tee,,,,CS-EST-BLK-XL,599,799,Color,Black,Size,XL,,,,,,published,50,210
+example-single-tee,,,,CS-EST-BLK-XXL,599,799,Color,Black,Size,XXL,,,,,,published,50,210
+
