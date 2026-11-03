@@ -6,14 +6,13 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
  *
  * Public endpoint — returns shipping cost tiers for the storefront.
  *
- * Reads shipping options directly from MedusaJS. Looks for:
- *   - A "Standard Shipping" option (non-return, non-free) → its price is the standard shipping cost
- *   - A "Free Shipping" option → its existence and the free_shipping_threshold from its type description
+ * Reads shipping options directly from MedusaJS, including **price_rules**
+ * that define conditional pricing (e.g. item_total >= 1000 → free shipping).
  *
- * The threshold is read from the "Free Shipping" option's type description
- * (configured in MedusaJS Admin as "Free shipping on orders above ₹1000").
- * If no description, falls back to reading the threshold from the
- * shipping option metadata.
+ * Detection order:
+ *   1. Price rules on the standard shipping option (item_total conditions)
+ *   2. A separate "Free Shipping" option with threshold in description/metadata
+ *   3. Falls back to a single-tier flat rate
  *
  * All data comes from MedusaJS — no hardcoding.
  */
@@ -36,10 +35,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "prices.id",
         "prices.amount",
         "prices.currency_code",
-        "type.id",
-        "type.label",
-        "type.description",
-        "type.code",
+        "prices.price_rules.id",
+        "prices.price_rules.attribute",
+        "prices.price_rules.value",
+        "prices.price_rules.operator",
       ],
     })
 
@@ -59,19 +58,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const standardOpt = storeOptions.find((o) => {
       const isFree =
         o.name?.toLowerCase().includes("free") ||
-        o.type?.code?.includes("free")
+        false
       const hasNonZeroPrice = (o.prices || []).some(
         (p: any) => p.amount > 0
       )
       return !isFree && hasNonZeroPrice
     })
 
-    // Find Free Shipping option
+    // Find Free Shipping option (separate option, if it exists)
     const freeOpt = storeOptions.find((o) => {
-      return (
-        o.name?.toLowerCase().includes("free") ||
-        o.type?.code?.includes("free")
-      )
+      return o.name?.toLowerCase().includes("free")
     })
 
     if (!standardOpt && !freeOpt) {
@@ -86,15 +82,131 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    const standardPrice =
-      standardOpt?.prices?.find((p: any) => p.amount > 0)?.amount ?? 0
     const currencyCode =
       standardOpt?.prices?.[0]?.currency_code ||
       freeOpt?.prices?.[0]?.currency_code ||
       "inr"
 
-    // Extract threshold from Free Shipping option's type description
-    // Expected format: "Free shipping on orders above ₹1000"
+    // ── Strategy 1: Detect conditional pricing via price_rules ──────────
+    // Look for item_total-based price rules on the standard shipping option.
+    // Example: price A has rule "item_total lte 999" → amount 200
+    //          price B has rule "item_total gte 1000" → amount 0
+    let tiersFromRules: Array<{
+      min: number
+      max: number | null
+      shipping_cost: number
+      label: string
+    }> | null = null
+    let thresholdFromRules: number | null = null
+
+    if (standardOpt?.prices?.length) {
+      // Collect prices that have item_total price_rules
+      const conditionalPrices: Array<{
+        amount: number
+        attribute: string
+        operator: string
+        value: number
+      }> = []
+
+      for (const price of standardOpt.prices) {
+        const rules = price.price_rules || []
+        for (const rule of rules) {
+          if (rule.attribute === "item_total") {
+            conditionalPrices.push({
+              amount: price.amount,
+              attribute: rule.attribute,
+              operator: rule.operator || "eq",
+              value: Number(rule.value),
+            })
+          }
+        }
+      }
+
+      logger.info(
+        `[shipping-info] Found ${conditionalPrices.length} item_total price rules`
+      )
+
+      if (conditionalPrices.length >= 2) {
+        // Sort by threshold value ascending
+        conditionalPrices.sort((a, b) => a.value - b.value)
+
+        // Find the free tier (amount === 0) to extract the threshold
+        const freePriceRule = conditionalPrices.find((p) => p.amount === 0)
+        const paidPriceRule = conditionalPrices.find((p) => p.amount > 0)
+
+        if (freePriceRule && paidPriceRule) {
+          // The free rule's value is the threshold (e.g., gte 1000 → free)
+          thresholdFromRules = freePriceRule.value
+
+          tiersFromRules = [
+            {
+              min: 0,
+              max: thresholdFromRules,
+              shipping_cost: paidPriceRule.amount,
+              label: `₹${paidPriceRule.amount} shipping`,
+            },
+            {
+              min: thresholdFromRules,
+              max: null,
+              shipping_cost: 0,
+              label: "Free Shipping",
+            },
+          ]
+
+          logger.info(
+            `[shipping-info] Built 2 tiers from price rules: ` +
+              `₹${paidPriceRule.amount} below ₹${thresholdFromRules}, free above`
+          )
+        }
+      } else if (conditionalPrices.length === 1) {
+        const rule = conditionalPrices[0]
+        if (rule.amount === 0) {
+          // Single rule: free above threshold
+          thresholdFromRules = rule.value
+          const fallbackPaid =
+            standardOpt.prices.find(
+              (p: any) => p.amount > 0 && (!p.price_rules || p.price_rules.length === 0)
+            )?.amount ?? 0
+
+          if (fallbackPaid > 0) {
+            tiersFromRules = [
+              {
+                min: 0,
+                max: thresholdFromRules,
+                shipping_cost: fallbackPaid,
+                label: `₹${fallbackPaid} shipping`,
+              },
+              {
+                min: thresholdFromRules,
+                max: null,
+                shipping_cost: 0,
+                label: "Free Shipping",
+              },
+            ]
+          }
+        }
+      }
+    }
+
+    // If price rules gave us tiers, use those
+    if (tiersFromRules && tiersFromRules.length > 0) {
+      logger.info(
+        `[shipping-info] Returning ${tiersFromRules.length} tiers (from price rules): ` +
+          `threshold=₹${thresholdFromRules}`
+      )
+
+      return res.json({
+        tiers: tiersFromRules,
+        free_shipping_threshold: thresholdFromRules,
+        standard_shipping_cost: tiersFromRules[0].shipping_cost,
+        currency_code: currencyCode,
+      })
+    }
+
+    // ── Strategy 2: Separate "Free Shipping" option ─────────────────────
+    const standardPrice =
+      standardOpt?.prices?.find((p: any) => p.amount > 0)?.amount ?? 0
+
     let freeShippingThreshold: number | null = null
 
     if (freeOpt) {
@@ -126,7 +238,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       }
     }
 
-    // Build tiers
+    // ── Build tiers (fallback path) ─────────────────────────────────────
     const tiers: Array<{
       min: number
       max: number | null
@@ -135,7 +247,6 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }> = []
 
     if (freeShippingThreshold && standardPrice > 0) {
-      // Two-tier: standard below threshold, free above
       tiers.push({
         min: 0,
         max: freeShippingThreshold,
@@ -149,7 +260,6 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         label: "Free Shipping",
       })
     } else if (standardPrice > 0) {
-      // Only standard shipping, no free option
       tiers.push({
         min: 0,
         max: null,
@@ -157,7 +267,6 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         label: `₹${standardPrice} shipping`,
       })
     } else {
-      // Only free shipping
       tiers.push({
         min: 0,
         max: null,
@@ -167,7 +276,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
 
     logger.info(
-      `[shipping-info] Returning ${tiers.length} tiers: ` +
+      `[shipping-info] Returning ${tiers.length} tiers (fallback): ` +
         `standard=₹${standardPrice}, threshold=₹${freeShippingThreshold}`
     )
 
